@@ -1,3 +1,5 @@
+import { transliterateEnglishToUrdu } from '../utils/urduDictionary';
+
 export interface ScannedFormData {
   fullName?: string;
   fullNameUrdu?: string;
@@ -19,7 +21,7 @@ export interface TranslationData {
 
 export class AiService {
   /**
-   * Scan image of manual voter registration form or slip via Gemini Vision OCR
+   * Scan image of manual voter registration form or slip via Gemini Vision OCR (if available) or graceful guide
    */
   static async scanManualForm(imageBase64: string): Promise<{ success: boolean; data?: ScannedFormData; error?: string }> {
     try {
@@ -55,32 +57,33 @@ export class AiService {
   }
 
   /**
-   * Convert English entries to proper Urdu text
+   * Convert English entries to proper Urdu text completely offline without requiring any external AI API
    */
   static async translateToUrdu(params: { fullName: string; firmName: string; address: string }): Promise<{
     success: boolean;
     data?: TranslationData;
     error?: string;
   }> {
+    // 100% offline local conversion directly without external API dependency
     try {
-      const response = await fetch('/api/translate-to-urdu', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      });
+      const fullNameUrdu = transliterateEnglishToUrdu(params.fullName || '');
+      const firmNameUrdu = transliterateEnglishToUrdu(params.firmName || '');
+      const addressUrdu = transliterateEnglishToUrdu(params.address || '');
 
-      if (!response.ok) {
-        throw new Error(`HTTP Error ${response.status}`);
-      }
-
-      const result = await response.json();
-      if (result.success && result.data) {
-        return { success: true, data: result.data };
-      }
-      return { success: false, error: result.error || 'Translation failed' };
+      return {
+        success: true,
+        data: {
+          fullNameUrdu,
+          firmNameUrdu,
+          addressUrdu,
+        },
+      };
     } catch (err: any) {
       console.error('Urdu translation failed:', err);
-      return { success: false, error: err.message || 'Translation service unavailable' };
+      return {
+        success: false,
+        error: err.message || 'Translation unavailable',
+      };
     }
   }
 }

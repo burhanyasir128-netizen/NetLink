@@ -190,54 +190,19 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
   });
 
   /**
-   * API Route: Convert English Entry to Urdu (Translation & Transliteration)
+   * API Route: Convert English Entry to Urdu (100% Offline Local Dictionary Translation & Transliteration)
+   * Does NOT call any external API or Gemini. Purely local and instant.
    */
-  app.post('/api/translate-to-urdu', async (req, res) => {
+  app.post('/api/translate-to-urdu', (req, res) => {
     const { fullName, firmName, address } = req.body;
 
-    try {
-      const prompt = `You are a professional English-to-Urdu translator for Pakistani election and business records (Urdu Bazar Lahore).
-Translate and transliterate the following English voter registration entries into high-quality Urdu:
+    const data = {
+      fullNameUrdu: transliterateEnglishToUrdu(fullName || ''),
+      firmNameUrdu: transliterateEnglishToUrdu(firmName || ''),
+      addressUrdu: transliterateEnglishToUrdu(address || ''),
+    };
 
-Full Name: "${fullName || ''}"
-Firm / Shop Name: "${firmName || ''}"
-Address: "${address || ''}"
-
-Return ONLY a valid JSON object in this exact schema without markdown backticks:
-{
-  "fullNameUrdu": "Urdu version of the name (e.g. Muhammad Bilal -> محمد بلال)",
-  "firmNameUrdu": "Urdu version of firm name (e.g. Sang-e-Meel Publications -> سنگ میل پبلی کیشنز)",
-  "addressUrdu": "Urdu version of the address (e.g. Shop # 24, Urdu Bazar Lahore -> دکان نمبر 24، اردو بازار، لاہور)"
-}`;
-
-      const response = await generateContentWithFallback({
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-      });
-
-      const text = response.text?.trim() || '{}';
-      let parsed = {};
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        const cleaned = text.replace(/```json\n?|\n?```/g, '').trim();
-        parsed = JSON.parse(cleaned);
-      }
-
-      return res.json({ success: true, data: parsed });
-    } catch (error: any) {
-      console.warn('Gemini translate-to-urdu hit quota or unavailable, falling back to instant Urdu dictionary transliteration:', error.message);
-      // Seamless zero-failure fallback using built-in Urdu translation dictionary
-      const fallbackData = {
-        fullNameUrdu: transliterateEnglishToUrdu(fullName || ''),
-        firmNameUrdu: transliterateEnglishToUrdu(firmName || ''),
-        addressUrdu: transliterateEnglishToUrdu(address || ''),
-      };
-      return res.json({ success: true, data: fallbackData, note: 'Translated using local election dictionary' });
-    }
+    return res.json({ success: true, data, note: 'Local dictionary conversion (No external API)' });
   });
 
   // Health check endpoint

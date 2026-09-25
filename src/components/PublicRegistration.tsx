@@ -168,7 +168,7 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
     }
   };
 
-  // Convert English entries to Urdu via Gemini
+  // Convert English entries to Urdu via local dictionary
   const handleTranslateAllToUrdu = async () => {
     if (!fullName && !firmName && !address) {
       setErrorMessage('Please type entries into Full Name, Firm Name, or Address first.');
@@ -183,7 +183,7 @@ export const PublicRegistration: React.FC<PublicRegistrationProps> = ({
         if (res.data.fullNameUrdu) setFullName(res.data.fullNameUrdu);
         if (res.data.firmNameUrdu) setFirmName(res.data.firmNameUrdu);
         if (res.data.addressUrdu) setAddress(res.data.addressUrdu);
-        setOcrFilledNotice('English text converted into official Urdu typography (اردو ترجمہ مکمل ہوا).');
+        setOcrFilledNotice('انگریزی الفاظ کو بغیر کسی بیرونی API کے خودکار اردو رسم الخط میں تبدیل کر دیا گیا ہے۔ (Instant local conversion)');
       } else {
         setErrorMessage(res.error || 'Translation failed');
       }

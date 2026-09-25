@@ -148,26 +148,58 @@ const COMMON_TERMS: Record<string, string> = {
   gpo: 'جی پی او',
 };
 
+// Extended phonetic mapping for words not found in common dictionary
+const PHONETIC_MAP: Record<string, string> = {
+  b: 'ب', p: 'پ', t: 'ت', j: 'ج', ch: 'چ', h: 'ح', kh: 'خ',
+  d: 'د', r: 'ر', z: 'ز', s: 'س', sh: 'ش', f: 'ف', q: 'ق',
+  k: 'ک', g: 'گ', l: 'ل', m: 'م', n: 'ن', w: 'و', v: 'و',
+  y: 'ی', a: 'ا', e: 'ے', i: 'ی', o: 'و', u: 'و',
+};
+
 export function transliterateEnglishToUrdu(text: string): string {
   if (!text || !text.trim()) return '';
 
   const clean = text.trim();
-  const words = clean.split(/(\s+|[-_.,/()#]+)/);
+  const tokens = clean.split(/(\s+|[-_.,/()#]+)/);
 
-  const translatedWords = words.map((token) => {
+  const translatedTokens = tokens.map((token) => {
+    if (!token || !token.trim()) return token;
     const lower = token.toLowerCase();
+
+    // Check direct word in dictionary
     if (COMMON_NAMES[lower]) {
       return COMMON_NAMES[lower];
     }
     if (COMMON_TERMS[lower]) {
       return COMMON_TERMS[lower];
     }
-    // Digits conversion to Urdu
+    // Digits
     if (/^\d+$/.test(token)) {
-      return token; // keep numbers readable or Urdu
+      return token;
     }
-    return token;
+    // Punctuation
+    if (/^[-_.,/()#:]+$/.test(token)) {
+      return token;
+    }
+
+    // Heuristic phonetic transliteration for unmapped English words
+    let result = '';
+    let i = 0;
+    const word = lower;
+    while (i < word.length) {
+      if (i + 1 < word.length && PHONETIC_MAP[word.slice(i, i + 2)]) {
+        result += PHONETIC_MAP[word.slice(i, i + 2)];
+        i += 2;
+      } else if (PHONETIC_MAP[word[i]]) {
+        result += PHONETIC_MAP[word[i]];
+        i++;
+      } else {
+        result += word[i];
+        i++;
+      }
+    }
+    return result || token;
   });
 
-  return translatedWords.join('').replace(/\s+/g, ' ').trim();
+  return translatedTokens.join('').replace(/\s+/g, ' ').trim();
 }
