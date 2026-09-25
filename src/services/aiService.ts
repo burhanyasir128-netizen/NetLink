@@ -31,25 +31,28 @@ export class AiService {
         body: JSON.stringify({ imageBase64 }),
       });
 
+      const responseText = await response.text();
+      let result: any = null;
+      try {
+        result = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        result = null;
+      }
+
       if (!response.ok) {
         let msg = `Server returned HTTP ${response.status}`;
-        try {
-          const errJson = await response.json();
-          if (errJson && errJson.error) {
-            msg = typeof errJson.error === 'string' ? errJson.error : JSON.stringify(errJson.error);
-          }
-        } catch {
-          const errorText = await response.text();
-          if (errorText) msg = errorText;
+        if (result && result.error) {
+          msg = typeof result.error === 'string' ? result.error : JSON.stringify(result.error);
+        } else if (responseText) {
+          msg = responseText.slice(0, 200);
         }
         throw new Error(msg);
       }
 
-      const result = await response.json();
-      if (result.success && result.data) {
+      if (result && result.success && result.data) {
         return { success: true, data: result.data };
       }
-      return { success: false, error: result.error || 'Failed to parse form content' };
+      return { success: false, error: result?.error || 'Failed to parse form content' };
     } catch (err: any) {
       console.error('OCR Scanning failed:', err);
       return { success: false, error: err.message || 'Scanning service unavailable' };

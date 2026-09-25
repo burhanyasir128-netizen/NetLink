@@ -166,6 +166,46 @@ export class ApiService {
   }
 
   /**
+   * Find full existing voter record by CNIC or Mobile (Local or GAS)
+   */
+  static async findExistingVoter(cnic?: string, mobile?: string): Promise<Voter | null> {
+    const cleanCnic = (cnic || '').replace(/[^0-9]/g, '');
+    const cleanMobile = (mobile || '').replace(/[^0-9]/g, '');
+    if (!cleanCnic && !cleanMobile) return null;
+
+    // First check currently loaded/cached voters
+    const localVoters = getStoredVoters();
+    const foundLocal = localVoters.find((v) => {
+      const vCnic = (v.cnic || '').replace(/[^0-9]/g, '');
+      const vMobile = (v.mobile || '').replace(/[^0-9]/g, '');
+      if (cleanCnic && cleanCnic.length >= 13 && vCnic === cleanCnic) return true;
+      if (cleanMobile && cleanMobile.length >= 10 && vMobile === cleanMobile) return true;
+      return false;
+    });
+
+    if (foundLocal) return foundLocal;
+
+    // Otherwise fetch latest data from Google Apps Script / proxy
+    try {
+      const data = await this.getAllData();
+      if (data && Array.isArray(data.voters)) {
+        const found = data.voters.find((v) => {
+          const vCnic = (v.cnic || '').replace(/[^0-9]/g, '');
+          const vMobile = (v.mobile || '').replace(/[^0-9]/g, '');
+          if (cleanCnic && cleanCnic.length >= 13 && vCnic === cleanCnic) return true;
+          if (cleanMobile && cleanMobile.length >= 10 && vMobile === cleanMobile) return true;
+          return false;
+        });
+        if (found) return found;
+      }
+    } catch (err) {
+      console.warn('Failed to query existing voter via getAllData:', err);
+    }
+
+    return null;
+  }
+
+  /**
    * Verify Admin Password or User Credentials with Role Support
    */
   static async verifyPassword(password: string, username?: string): Promise<{ valid: boolean; user?: UserAccount }> {

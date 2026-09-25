@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { compressImage } from '../services/imageCompression';
 import { AiService, ScannedFormData } from '../services/aiService';
+import { ApiService } from '../services/apiService';
+import { Voter } from '../types';
 import { formatCnic, formatMobile } from '../utils/formatters';
 
 interface ScanFormModalProps {
@@ -37,6 +39,8 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
   const [formImage, setFormImage] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScannedFormData | null>(null);
+  const [existingRecord, setExistingRecord] = useState<Voter | null>(null);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedLanguageMode, setSelectedLanguageMode] = useState<'urdu' | 'english' | 'bilingual'>('urdu');
 
@@ -119,11 +123,30 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
     setIsScanning(true);
     setErrorMessage(null);
     setScanResult(null);
+    setExistingRecord(null);
 
     try {
       const res = await AiService.scanManualForm(base64Img);
       if (res.success && res.data) {
         setScanResult(res.data);
+
+        // Check if voter already exists in database/sheet by CNIC or Mobile
+        const scannedCnic = res.data.cnic || '';
+        const scannedMobile = res.data.mobile || '';
+
+        if (scannedCnic || scannedMobile) {
+          setIsCheckingDuplicate(true);
+          try {
+            const existing = await ApiService.findExistingVoter(scannedCnic, scannedMobile);
+            if (existing) {
+              setExistingRecord(existing);
+            }
+          } catch (e) {
+            console.warn('Failed checking existing voter in scan modal:', e);
+          } finally {
+            setIsCheckingDuplicate(false);
+          }
+        }
       } else {
         setErrorMessage(res.error || 'Could not detect voter details. Please ensure form text is clear.');
       }
@@ -132,6 +155,20 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
     } finally {
       setIsScanning(false);
     }
+  };
+
+  // Allow user to directly apply the existing record data if found
+  const handleApplyExistingRecord = () => {
+    if (!existingRecord) return;
+    onApplyData({
+      fullName: existingRecord.fullName,
+      firmName: existingRecord.firmName,
+      cnic: existingRecord.cnic,
+      mobile: existingRecord.mobile,
+      address: existingRecord.address,
+    });
+    stopDocumentCamera();
+    onClose();
   };
 
   // Prepare final values based on chosen language preference (Urdu vs English vs Bilingual)
@@ -399,6 +436,62 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Existing Record Notice (If CNIC or Mobile already registered) */}
+              {isCheckingDuplicate && (
+                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
+                  <span>Checking database for existing registered voter record... (ووٹر ریکارڈ کی جانچ ہو رہی ہے)</span>
+                </div>
+              )}
+
+              {existingRecord && !isCheckingDuplicate && (
+                <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/60 text-xs text-amber-200 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="font-semibold text-white text-sm flex items-center gap-2">
+                          <span>یہ ووٹر پہلے سے رجسٹرڈ ہے! (Record Already Exists)</span>
+                          <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-900/60 text-amber-300 border border-amber-600/40">
+                            {existingRecord.serialNumber}
+                          </span>
+                        </h4>
+                        <p className="text-amber-300/90 text-xs mt-1">
+                          سکین کیے گئے شناختی کارڈ یا موبائل نمبر سے ریکارڈ مل گیا ہے۔
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleApplyExistingRecord}
+                      className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow transition-colors shrink-0 cursor-pointer"
+                    >
+                      موجودہ ریکارڈ لوڈ کریں (Use Existing Data)
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-amber-700/40 text-[11px]">
+                    <div>
+                      <span className="text-amber-400/80 block">نام (Name):</span>
+                      <strong className="text-white">{existingRecord.fullName}</strong>
+                    </div>
+                    <div>
+                      <span className="text-amber-400/80 block">فرم (Firm):</span>
+                      <strong className="text-emerald-300">{existingRecord.firmName}</strong>
+                    </div>
+                    <div>
+                      <span className="text-amber-400/80 block">CNIC:</span>
+                      <strong className="font-mono text-slate-100">{existingRecord.cnic}</strong>
+                    </div>
+                    <div>
+                      <span className="text-amber-400/80 block">حالت (Status):</span>
+                      <strong className="text-emerald-400">{existingRecord.status}</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Data Preview Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
