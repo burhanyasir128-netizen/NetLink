@@ -585,6 +585,11 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
    * API Route: Secure Server-side Proxy for GET requests to Google Apps Script
    */
   app.get('/api/gas-proxy', async (req, res) => {
+    // Prevent HTTP caching so deleted/updated Google Sheet rows are instantly visible
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     try {
       const config = getSystemConfig();
       if (!config.useGoogleAppsScript || !config.googleWebAppUrl) {

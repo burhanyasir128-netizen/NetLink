@@ -111,10 +111,16 @@ export class ApiService {
       try {
         const url = new URL('/api/gas-proxy', window.location.origin);
         url.searchParams.set('action', 'getAll');
+        url.searchParams.set('_t', Date.now().toString());
 
         const res = await fetch(url.toString(), {
           method: 'GET',
-          headers: { 'Accept': 'application/json' },
+          headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          },
+          cache: 'no-store',
         });
 
         if (res.ok) {
@@ -123,7 +129,11 @@ export class ApiService {
             try {
               const data = JSON.parse(text);
               if (data.success && Array.isArray(data.voters)) {
-                saveStoredVoters(data.voters);
+                // Filter out empty rows if any cells were cleared
+                const cleanVoters = data.voters.filter(
+                  (v: any) => v && (v.fullName?.trim() || v.cnic?.trim() || v.serialNumber?.trim())
+                );
+                saveStoredVoters(cleanVoters);
                 if (data.settings) {
                   const passwordFromSheet = data.settings.adminPassword || data.settings.adminPasswordHash;
                   const mergedSettings = {
@@ -133,9 +143,9 @@ export class ApiService {
                     adminPasswordHash: passwordFromSheet || settings.adminPasswordHash,
                   };
                   saveStoredSettings(mergedSettings);
-                  return { voters: data.voters, settings: mergedSettings, isGas: true };
+                  return { voters: cleanVoters, settings: mergedSettings, isGas: true };
                 }
-                return { voters: data.voters, settings, isGas: true };
+                return { voters: cleanVoters, settings, isGas: true };
               }
             } catch {
               // Ignore parse error and fallback
@@ -154,16 +164,26 @@ export class ApiService {
         const directUrl = new URL(webAppUrl);
         directUrl.searchParams.set('action', 'getAll');
         directUrl.searchParams.set('secret', 'VoterPortal2026SecureKey');
+        directUrl.searchParams.set('_t', Date.now().toString());
+
         const dRes = await fetch(directUrl.toString(), {
           method: 'GET',
-          headers: { Accept: 'application/json' },
+          headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          },
+          cache: 'no-store',
         });
         if (dRes.ok) {
           const text = await dRes.text();
           if (text && !text.trim().startsWith('<')) {
             const data = JSON.parse(text);
             if (data.success && Array.isArray(data.voters)) {
-              saveStoredVoters(data.voters);
+              const cleanVoters = data.voters.filter(
+                (v: any) => v && (v.fullName?.trim() || v.cnic?.trim() || v.serialNumber?.trim())
+              );
+              saveStoredVoters(cleanVoters);
               if (data.settings) {
                 const passwordFromSheet = data.settings.adminPassword || data.settings.adminPasswordHash;
                 const mergedSettings = {
@@ -173,9 +193,9 @@ export class ApiService {
                   adminPasswordHash: passwordFromSheet || settings.adminPasswordHash,
                 };
                 saveStoredSettings(mergedSettings);
-                return { voters: data.voters, settings: mergedSettings, isGas: true };
+                return { voters: cleanVoters, settings: mergedSettings, isGas: true };
               }
-              return { voters: data.voters, settings, isGas: true };
+              return { voters: cleanVoters, settings, isGas: true };
             }
           }
         }

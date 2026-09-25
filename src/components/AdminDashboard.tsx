@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Lock,
   LogOut,
@@ -138,6 +138,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   }, [voters, searchQuery, selectedFirmFilter]);
 
+  // Auto refresh data on mount
+  useEffect(() => {
+    onRefreshData();
+  }, []);
+
   // Handle Authentication submit
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,6 +167,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         sessionStorage.setItem('admin_user_session', JSON.stringify(user));
         setPasswordInput('');
         setUsernameInput('');
+        // Immediately fetch the latest updated list from Google Sheets / backend
+        await onRefreshData();
       } else {
         setAuthError('غلط پاس ورڈ یا یوزر نیم! براہ کرم دوبارہ کوشش کریں۔ (Invalid credentials)');
       }

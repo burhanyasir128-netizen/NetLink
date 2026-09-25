@@ -53,6 +53,17 @@ export default function App() {
 
   useEffect(() => {
     loadData();
+  }, [activeTab]);
+
+  // Auto-refresh when returning to window/tab
+  useEffect(() => {
+    const handleFocus = () => {
+      loadData();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   // Anti-Inspect / Disable Developer Tools & Right Click
