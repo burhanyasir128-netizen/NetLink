@@ -421,11 +421,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-2xl bg-slate-950/70 border border-slate-800 text-[11px]">
                 <div className="space-y-0.5">
                   <span className="font-bold text-amber-300">1. Super Admin:</span>
-                  <p className="text-slate-400">مکمل اختیارات، پاس ورڈ اور صارف مینجمنٹ، ڈیٹا ڈیلیٹ</p>
+                  <p className="text-slate-400">گٹ ہب فائل <code className="text-amber-400 font-mono">super-admin.json</code> سے لائیو، گوگل شیٹ لنک کی تنصیب اور کنفیگریشن کا واحد مجاز</p>
                 </div>
                 <div className="space-y-0.5">
                   <span className="font-bold text-sky-300">2. Data Entry:</span>
-                  <p className="text-slate-400">صرف ووٹر کا اندراج اور تصدیق کر سکتا ہے</p>
+                  <p className="text-slate-400">صرف ووٹر کا اندراج اور تصدیق کر سکتا ہے (گوگل شیٹ کا لنک پوشیدہ رہتا ہے)</p>
                 </div>
                 <div className="space-y-0.5">
                   <span className="font-bold text-slate-300">3. Viewer:</span>
