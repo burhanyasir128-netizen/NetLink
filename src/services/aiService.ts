@@ -44,7 +44,11 @@ export class AiService {
         if (result && result.error) {
           msg = typeof result.error === 'string' ? result.error : JSON.stringify(result.error);
         } else if (responseText) {
-          msg = responseText.slice(0, 200);
+          if (responseText.trim().startsWith('<') || responseText.includes('<!DOCTYPE') || responseText.includes('<html')) {
+            msg = 'سرور پر عارضی کنکشن مسئلہ ہے۔ برائے مہربانی "بغیر API کے سکین" استعمال کریں یا دوبارہ کوشش کریں۔ (Connection route returned HTML instead of API response).';
+          } else {
+            msg = responseText.slice(0, 200);
+          }
         }
         throw new Error(msg);
       }

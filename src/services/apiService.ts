@@ -85,21 +85,28 @@ export class ApiService {
         });
 
         if (res.ok) {
-          const data = await res.json();
-          if (data.success && Array.isArray(data.voters)) {
-            saveStoredVoters(data.voters);
-            if (data.settings) {
-              const passwordFromSheet = data.settings.adminPassword || data.settings.adminPasswordHash;
-              const mergedSettings = {
-                ...settings,
-                ...data.settings,
-                ...config,
-                adminPasswordHash: passwordFromSheet || settings.adminPasswordHash,
-              };
-              saveStoredSettings(mergedSettings);
-              return { voters: data.voters, settings: mergedSettings, isGas: true };
+          const text = await res.text();
+          if (text && !text.trim().startsWith('<')) {
+            try {
+              const data = JSON.parse(text);
+              if (data.success && Array.isArray(data.voters)) {
+                saveStoredVoters(data.voters);
+                if (data.settings) {
+                  const passwordFromSheet = data.settings.adminPassword || data.settings.adminPasswordHash;
+                  const mergedSettings = {
+                    ...settings,
+                    ...data.settings,
+                    ...config,
+                    adminPasswordHash: passwordFromSheet || settings.adminPasswordHash,
+                  };
+                  saveStoredSettings(mergedSettings);
+                  return { voters: data.voters, settings: mergedSettings, isGas: true };
+                }
+                return { voters: data.voters, settings, isGas: true };
+              }
+            } catch {
+              // Ignore parse error and fallback
             }
-            return { voters: data.voters, settings, isGas: true };
           }
         }
       } catch (err) {
@@ -130,12 +137,19 @@ export class ApiService {
 
         const res = await fetch(url.toString());
         if (res.ok) {
-          const data = await res.json();
-          return {
-            cnicExists: Boolean(data.cnicExists),
-            mobileExists: Boolean(data.mobileExists),
-            existingVoterName: data.existingVoterName,
-          };
+          const text = await res.text();
+          if (text && !text.trim().startsWith('<')) {
+            try {
+              const data = JSON.parse(text);
+              return {
+                cnicExists: Boolean(data.cnicExists),
+                mobileExists: Boolean(data.mobileExists),
+                existingVoterName: data.existingVoterName,
+              };
+            } catch {
+              // fallback
+            }
+          }
         }
       } catch (err) {
         console.warn('Google Apps Script proxy duplicate check failed, using local db check', err);
@@ -382,21 +396,28 @@ export class ApiService {
         });
 
         if (res.ok) {
-          const data = await res.json();
-          if (data.success) {
-            const newVoter: Voter = {
-              id: data.serialNumber || `UB-${Date.now().toString().slice(-4)}`,
-              serialNumber: data.serialNumber || `UB-${Date.now().toString().slice(-4)}`,
-              ...voterData,
-              photoUrl: data.photoUrl || voterData.photoUrl,
-              registrationDate: new Date().toISOString(),
-              status: voterData.status || 'Verified',
-            };
-            const current = getStoredVoters();
-            saveStoredVoters([newVoter, ...current]);
-            return { success: true, voter: newVoter };
-          } else {
-            return { success: false, error: data.error || 'Server error occurred' };
+          const text = await res.text();
+          if (text && !text.trim().startsWith('<')) {
+            try {
+              const data = JSON.parse(text);
+              if (data.success) {
+                const newVoter: Voter = {
+                  id: data.serialNumber || `UB-${Date.now().toString().slice(-4)}`,
+                  serialNumber: data.serialNumber || `UB-${Date.now().toString().slice(-4)}`,
+                  ...voterData,
+                  photoUrl: data.photoUrl || voterData.photoUrl,
+                  registrationDate: new Date().toISOString(),
+                  status: voterData.status || 'Verified',
+                };
+                const current = getStoredVoters();
+                saveStoredVoters([newVoter, ...current]);
+                return { success: true, voter: newVoter };
+              } else {
+                return { success: false, error: data.error || 'Server error occurred' };
+              }
+            } catch {
+              // fallback to local creation below
+            }
           }
         }
       } catch (err) {
