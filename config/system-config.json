@@ -1,0 +1,38 @@
+{
+  "googleWebAppUrl": "https://script.google.com/macros/s/AKfycbzEfCxfbzopDB_hftylUXqHVimwHr7wi-WPakRLdf2AWsFrBtWSJZwur8jgpbr6I2ZMQw/exec",
+  "useGoogleAppsScript": true,
+  "lastUpdated": "2026-09-25T05:07:03.364Z",
+  "adminPassword": "admin@123",
+  "users": [
+    {
+      "id": "USR-1",
+      "username": "admin",
+      "fullName": "چیف ایڈمنسٹریٹر (Chief Admin)",
+      "role": "super_admin",
+      "password": "admin@123",
+      "phone": "0300-8451234",
+      "status": "active",
+      "createdAt": "2026-09-24T00:00:00.000Z"
+    },
+    {
+      "id": "USR-2",
+      "username": "operator",
+      "fullName": "ڈیٹا انٹری آپریٹر (Data Operator)",
+      "role": "data_entry",
+      "password": "user123",
+      "phone": "0321-7654321",
+      "status": "active",
+      "createdAt": "2026-09-24T00:00:00.000Z"
+    },
+    {
+      "id": "USR-3",
+      "username": "viewer",
+      "fullName": "الیکشن نگران / آبزرور (Election Observer)",
+      "role": "viewer",
+      "password": "view123",
+      "phone": "0333-1122334",
+      "status": "active",
+      "createdAt": "2026-09-24T00:00:00.000Z"
+    }
+  ]
+}

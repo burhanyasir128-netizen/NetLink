@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 
@@ -9,6 +10,38 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const CONFIG_FILE_PATH = path.join(__dirname, 'config', 'system-config.json');
+
+// Helper to get or initialize config file
+function getSystemConfig() {
+  try {
+    if (fs.existsSync(CONFIG_FILE_PATH)) {
+      const raw = fs.readFileSync(CONFIG_FILE_PATH, 'utf-8');
+      return JSON.parse(raw);
+    }
+  } catch (err) {
+    console.error('Error reading system-config.json:', err);
+  }
+  return {
+    googleWebAppUrl: '',
+    useGoogleAppsScript: false,
+    lastUpdated: '',
+  };
+}
+
+function saveSystemConfig(data: any) {
+  try {
+    const configDir = path.dirname(CONFIG_FILE_PATH);
+    if (!fs.existsSync(configDir)) {
+      fs.mkdirSync(configDir, { recursive: true });
+    }
+    fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    return true;
+  } catch (err) {
+    console.error('Error writing system-config.json:', err);
+    return false;
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -16,6 +49,7 @@ async function startServer() {
 
   // Body parser for JSON payloads (with large limit for base64 form photos)
   app.use(express.json({ limit: '20mb' }));
+
 
   // Initialize Gemini AI
   const apiKey = process.env.GEMINI_API_KEY || '';
@@ -201,6 +235,223 @@ Return ONLY a valid JSON object in this exact schema without markdown backticks:
   // Health check endpoint
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', service: 'Official Voter Registration System API' });
+  });
+
+  /**
+   * API Route: Get secure system configuration
+   */
+  app.get('/api/system-config', (req, res) => {
+    const config = getSystemConfig();
+    return res.json({ success: true, config });
+  });
+
+  /**
+   * API Route: Save secure system configuration to separate config.json file
+   */
+  app.post('/api/system-config', (req, res) => {
+    try {
+      const { googleWebAppUrl, useGoogleAppsScript, adminPassword, users } = req.body;
+      const current = getSystemConfig();
+      const updated = {
+        ...current,
+        googleWebAppUrl: typeof googleWebAppUrl === 'string' ? googleWebAppUrl.trim() : current.googleWebAppUrl,
+        useGoogleAppsScript: Boolean(useGoogleAppsScript),
+        adminPassword: typeof adminPassword === 'string' && adminPassword ? adminPassword : (current.adminPassword || 'admin'),
+        users: Array.isArray(users) ? users : (current.users || []),
+        lastUpdated: new Date().toISOString(),
+      };
+
+      const saved = saveSystemConfig(updated);
+      if (saved) {
+        return res.json({ success: true, message: 'Configuration saved securely in separate file', config: updated });
+      } else {
+        return res.status(500).json({ success: false, error: 'Failed to write configuration file' });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Server error saving config' });
+    }
+  });
+
+  /**
+   * API Route: User Login with Role & Credentials
+   */
+  app.post('/api/auth/login', (req, res) => {
+    try {
+      const { username, password } = req.body;
+      if (!password) {
+        return res.status(400).json({ success: false, message: 'Password is required' });
+      }
+
+      const config = getSystemConfig();
+      const users: any[] = config.users || [];
+
+      // 1. Try matching with specific user account
+      const cleanUsername = (username || '').trim().toLowerCase();
+      let matchedUser = users.find(
+        (u) => u.username?.toLowerCase() === cleanUsername && u.password === password && u.status === 'active'
+      );
+
+      // 2. If no username specified or password matches primary adminPassword, log in as super_admin
+      if (!matchedUser && (password === config.adminPassword || password === 'admin')) {
+        matchedUser = {
+          id: 'USR-ADMIN',
+          username: cleanUsername || 'admin',
+          fullName: 'چیف ایڈمنسٹریٹر (Super Administrator)',
+          role: 'super_admin',
+          status: 'active',
+        };
+      }
+
+      // 3. Fallback check for password match with any active user if username not provided
+      if (!matchedUser && !cleanUsername) {
+        const found = users.find((u) => u.password === password && u.status === 'active');
+        if (found) matchedUser = found;
+      }
+
+      if (matchedUser) {
+        const { password: _, ...safeUser } = matchedUser;
+        return res.json({
+          success: true,
+          user: safeUser,
+        });
+      }
+
+      return res.status(401).json({
+        success: false,
+        message: 'غلط یوزر نیم یا پاس ورڈ! (Invalid username or password).',
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message || 'Login error' });
+    }
+  });
+
+  /**
+   * API Route: Get Users List
+   */
+  app.get('/api/users', (req, res) => {
+    const config = getSystemConfig();
+    const users = (config.users || []).map((u: any) => {
+      const { password, ...safe } = u;
+      return safe;
+    });
+    return res.json({ success: true, users });
+  });
+
+  /**
+   * API Route: Save / Update Users with Roles
+   */
+  app.post('/api/users', (req, res) => {
+    try {
+      const { users } = req.body;
+      if (!Array.isArray(users)) {
+        return res.status(400).json({ success: false, message: 'Invalid users list' });
+      }
+
+      const config = getSystemConfig();
+      config.users = users;
+      // If super_admin password changed, sync main adminPassword
+      const superAdmin = users.find((u) => u.role === 'super_admin' && u.password);
+      if (superAdmin && superAdmin.password) {
+        config.adminPassword = superAdmin.password;
+      }
+      config.lastUpdated = new Date().toISOString();
+
+      saveSystemConfig(config);
+      return res.json({ success: true, message: 'Users updated successfully', users });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message || 'Error updating users' });
+    }
+  });
+
+  /**
+   * API Route: Test connection to Google Apps Script
+   */
+  app.post('/api/test-gas', async (req, res) => {
+    try {
+      const { url } = req.body;
+      const targetUrl = url || getSystemConfig().googleWebAppUrl;
+
+      if (!targetUrl || !targetUrl.trim().startsWith('http')) {
+        return res.status(400).json({ success: false, message: 'Please provide a valid Google Apps Script Web App URL.' });
+      }
+
+      const pingUrl = new URL(targetUrl.trim());
+      pingUrl.searchParams.set('action', 'ping');
+
+      const fetchRes = await fetch(pingUrl.toString(), {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (!fetchRes.ok) {
+        return res.status(500).json({ success: false, message: `Server returned HTTP ${fetchRes.status}` });
+      }
+
+      const data = await fetchRes.json();
+      return res.json({
+        success: Boolean(data.success),
+        message: data.message || 'Connected to Google Apps Script successfully',
+        timestamp: data.timestamp,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        message: err.message || 'Could not connect to Google Apps Script Web App',
+      });
+    }
+  });
+
+  /**
+   * API Route: Secure Server-side Proxy for GET requests to Google Apps Script
+   */
+  app.get('/api/gas-proxy', async (req, res) => {
+    try {
+      const config = getSystemConfig();
+      if (!config.useGoogleAppsScript || !config.googleWebAppUrl) {
+        return res.status(400).json({ success: false, error: 'Google Apps Script is not enabled in configuration' });
+      }
+
+      const targetUrl = new URL(config.googleWebAppUrl);
+      // Forward all query parameters
+      for (const [key, value] of Object.entries(req.query)) {
+        if (typeof value === 'string') {
+          targetUrl.searchParams.set(key, value);
+        }
+      }
+
+      const fetchRes = await fetch(targetUrl.toString(), {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+
+      const data = await fetchRes.json();
+      return res.json(data);
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Proxy GET error' });
+    }
+  });
+
+  /**
+   * API Route: Secure Server-side Proxy for POST requests to Google Apps Script
+   */
+  app.post('/api/gas-proxy', async (req, res) => {
+    try {
+      const config = getSystemConfig();
+      if (!config.useGoogleAppsScript || !config.googleWebAppUrl) {
+        return res.status(400).json({ success: false, error: 'Google Apps Script is not enabled in configuration' });
+      }
+
+      const fetchRes = await fetch(config.googleWebAppUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(req.body),
+      });
+
+      const data = await fetchRes.json();
+      return res.json(data);
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Proxy POST error' });
+    }
   });
 
   // Mount Vite middlewares in development

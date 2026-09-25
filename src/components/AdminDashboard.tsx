@@ -24,11 +24,15 @@ import {
   AlertTriangle,
   FileSpreadsheet,
   TrendingUp,
+  Shield,
+  KeyRound,
+  UserCheck,
 } from 'lucide-react';
-import { SystemSettings, Voter, PrintMode } from '../types';
+import { SystemSettings, Voter, PrintMode, UserAccount } from '../types';
 import { ApiService } from '../services/apiService';
 import { getDirectImageUrl } from '../services/driveHelper';
 import { formatDate, formatCnic, formatMobile } from '../utils/formatters';
+import { UserManagementModal } from './UserManagementModal';
 
 interface AdminDashboardProps {
   voters: Voter[];
@@ -38,7 +42,6 @@ interface AdminDashboardProps {
   onRefreshData: () => Promise<void>;
   onSaveSettings: (settings: SystemSettings) => Promise<void>;
   onOpenPrint: (mode: PrintMode, voter?: Voter, votersList?: Voter[]) => void;
-  onOpenScriptModal: () => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -51,12 +54,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOpenPrint,
 }) => {
   // Authentication State
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    try {
+      const stored = sessionStorage.getItem('admin_user_session');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return sessionStorage.getItem('admin_authenticated') === 'true';
   });
+  const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
+  const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
 
   // Table Filter & Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,6 +87,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsForm, setSettingsForm] = useState<SystemSettings>(settings);
   const [settingsSaveMsg, setSettingsSaveMsg] = useState<string | null>(null);
+  const [testingGas, setTestingGas] = useState(false);
+  const [gasTestResult, setGasTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Quick Add Voter Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -131,14 +146,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsVerifyingAuth(true);
 
     try {
-      // Send password to backend API for verification
-      const isValid = await ApiService.verifyPassword(passwordInput);
-      if (isValid) {
+      // Send credentials to backend API for verification
+      const res = await ApiService.verifyPassword(passwordInput, usernameInput);
+      if (res.valid) {
         setIsAuthenticated(true);
+        const user = res.user || {
+          id: 'USR-ADMIN',
+          username: usernameInput || 'admin',
+          fullName: 'چیف ایڈمنسٹریٹر (Super Administrator)',
+          role: 'super_admin',
+          status: 'active',
+          createdAt: new Date().toISOString(),
+        };
+        setCurrentUser(user);
         sessionStorage.setItem('admin_authenticated', 'true');
+        sessionStorage.setItem('admin_user_session', JSON.stringify(user));
         setPasswordInput('');
+        setUsernameInput('');
       } else {
-        setAuthError('Invalid administrator password. Please try again.');
+        setAuthError('غلط پاس ورڈ یا یوزر نیم! براہ کرم دوبارہ کوشش کریں۔ (Invalid credentials)');
       }
     } catch (err: any) {
       setAuthError('Authentication failed: ' + (err.message || 'Server error'));
@@ -149,7 +175,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleLogout = () => {
     setIsAuthenticated(false);
+    setCurrentUser(null);
     sessionStorage.removeItem('admin_authenticated');
+    sessionStorage.removeItem('admin_user_session');
   };
 
   const handleRefresh = async () => {
@@ -271,14 +299,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     e.preventDefault();
     setSettingsSaveMsg(null);
     try {
+      // Save configuration securely into separate config/system-config.json file
+      await ApiService.saveSecureConfig({
+        googleWebAppUrl: settingsForm.googleWebAppUrl,
+        useGoogleAppsScript: settingsForm.useGoogleAppsScript,
+        adminPassword: settingsForm.adminPasswordHash,
+      });
       await onSaveSettings(settingsForm);
-      setSettingsSaveMsg('Settings saved successfully!');
+      setSettingsSaveMsg('پاس ورڈ اور سیٹنگز گوگل شیٹ اور سرور پر کامیابی سے محفوظ ہو گئے ہیں! (Saved to Google Sheet & Server)');
       setTimeout(() => {
         setIsSettingsOpen(false);
         setSettingsSaveMsg(null);
       }, 1500);
     } catch (err: any) {
       setSettingsSaveMsg('Error saving settings: ' + err.message);
+    }
+  };
+
+  const handleTestGas = async () => {
+    setTestingGas(true);
+    setGasTestResult(null);
+    try {
+      const res = await ApiService.testGasConnection(settingsForm.googleWebAppUrl);
+      setGasTestResult(res);
+    } catch (err: any) {
+      setGasTestResult({ success: false, message: err.message || 'Connection test failed' });
+    } finally {
+      setTestingGas(false);
     }
   };
 
@@ -311,7 +358,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300">
-                Admin Password (خفیہ کوڈ)
+                Username / یوزر نیم (اختیاری)
+              </label>
+              <div className="relative">
+                <Users className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={usernameInput}
+                  onChange={(e) => setUsernameInput(e.target.value)}
+                  placeholder="e.g. admin or operator"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                />
+              </div>
+              <p className="text-[10px] text-slate-500">
+                اگر صرف پاس ورڈ سے لاگ ان کرنا چاہیں تو یوزر نیم خالی چھوڑ دیں۔
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300">
+                Password / خفیہ کوڈ <span className="text-rose-400">*</span>
               </label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -325,9 +391,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   autoFocus
                 />
               </div>
-              <p className="text-[11px] text-slate-500">
-                Default password: <code className="text-emerald-400 font-mono">admin</code> (changeable in Settings)
-              </p>
+              <div className="flex items-center justify-between text-[11px] text-slate-500">
+                <span>Default admin: <code className="text-emerald-400 font-mono">admin@123</code></span>
+              </div>
             </div>
 
             <button
@@ -343,7 +409,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               ) : (
                 <>
                   <Lock className="w-4 h-4" />
-                  <span>Sign In to Dashboard</span>
+                  <span>Sign In to Dashboard (لاگ ان کریں)</span>
                 </>
               )}
             </button>
@@ -366,7 +432,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               Admin Portal
             </span>
             <span className="text-slate-600">&bull;</span>
-            <span className="text-xs text-slate-400">Authorized Session</span>
+            <span className="text-xs text-slate-300 flex items-center gap-1.5">
+              <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{currentUser?.fullName || currentUser?.username || 'Administrator'}</span>
+            </span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+              {currentUser?.role === 'super_admin' ? 'Super Admin' : currentUser?.role === 'data_entry' ? 'Data Entry' : currentUser?.role === 'viewer' ? 'Viewer' : 'Admin'}
+            </span>
           </div>
           <h2 className="text-xl sm:text-2xl font-bold font-heading text-white">
             Voter Registry & Management Dashboard
@@ -375,6 +447,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Top Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* User Management & Password Button */}
+          <button
+            type="button"
+            onClick={() => setIsUserManagementOpen(true)}
+            className="px-3 py-2 rounded-xl border border-emerald-500/40 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-md"
+            title="Manage Users, Passwords & Access Roles"
+          >
+            <Shield className="w-4 h-4 text-emerald-400" />
+            <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+            <span>پاس ورڈ و یوزرز (Users & Passwords)</span>
+          </button>
+
           {/* Refresh */}
           <button
             type="button"
@@ -388,20 +472,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           {/* Add Voter */}
-          <button
-            type="button"
-            onClick={() => setIsAddModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-md shadow-emerald-950"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Voter</span>
-          </button>
+          {currentUser?.role !== 'viewer' && (
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-md shadow-emerald-950 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Voter</span>
+            </button>
+          )}
 
           {/* Print A4 List */}
           <button
             type="button"
             onClick={() => onOpenPrint('list', undefined, filteredVoters)}
-            className="px-3 py-2 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors"
+            className="px-3 py-2 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
             title="Print Official A4 Voter List"
           >
             <Printer className="w-4 h-4 text-emerald-400" />
@@ -412,7 +498,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             type="button"
             onClick={() => onOpenPrint('all-ids', undefined, filteredVoters)}
-            className="px-3 py-2 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors"
+            className="px-3 py-2 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
             title="Print All Filtered ID Cards (Grid)"
           >
             <CreditCard className="w-4 h-4 text-sky-400" />
@@ -423,7 +509,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             type="button"
             onClick={handleExportCSV}
-            className="px-3 py-2 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors"
+            className="px-3 py-2 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
             title="Download CSV for Excel"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
@@ -431,17 +517,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           {/* Settings */}
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsForm(settings);
-              setIsSettingsOpen(true);
-            }}
-            className="p-2.5 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-colors"
-            title="Organization & Backend Settings"
-          >
-            <Settings className="w-4 h-4 text-amber-400" />
-          </button>
+          {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin') && (
+            <button
+              type="button"
+              onClick={async () => {
+                const secConfig = await ApiService.getSecureConfig();
+                setSettingsForm({
+                  ...settings,
+                  googleWebAppUrl: secConfig.googleWebAppUrl,
+                  useGoogleAppsScript: secConfig.useGoogleAppsScript,
+                });
+                setGasTestResult(null);
+                setIsSettingsOpen(true);
+              }}
+              className="p-2.5 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-colors cursor-pointer"
+              title="Organization & Backend Settings"
+            >
+              <Settings className="w-4 h-4 text-amber-400" />
+            </button>
+          )}
 
           {/* Logout */}
           <button
@@ -862,23 +956,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditMode(true)}
-                      className="px-3.5 py-2 border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl flex items-center gap-1.5"
-                    >
-                      <Edit3 className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Edit</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDeleteRecord}
-                      disabled={isDeleting}
-                      className="px-3.5 py-2 border border-rose-900/60 bg-rose-950/30 hover:bg-rose-900 text-rose-300 text-xs font-medium rounded-xl flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete</span>
-                    </button>
+                    {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.role === 'data_entry') && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditMode(true)}
+                        className="px-3.5 py-2 border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Edit</span>
+                      </button>
+                    )}
+                    {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin') && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteRecord}
+                        disabled={isDeleting}
+                        className="px-3.5 py-2 border border-rose-900/60 bg-rose-950/30 hover:bg-rose-900 text-rose-300 text-xs font-medium rounded-xl flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -1049,14 +1147,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div>
-                <label className="text-slate-300 font-semibold mb-1 block">Admin Password</label>
+                <label className="text-slate-300 font-semibold mb-1 block">Admin Password (ایڈمن لاگ ان پاس ورڈ)</label>
                 <input
                   type="text"
                   value={settingsForm.adminPasswordHash}
                   onChange={(e) => setSettingsForm({ ...settingsForm, adminPasswordHash: e.target.value })}
                   className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 font-mono"
                 />
-                <p className="text-[11px] text-slate-400 mt-0.5">Password used to authenticate the admin panel.</p>
+                <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
+                  <span>یہ پاس ورڈ آپ کی گوگل شیٹ کے "Settings" ٹیب اور سرور پر لائیو محفوظ ہوتا ہے۔</span>
+                </p>
+              </div>
+
+              {/* Separate Secure Configuration: Google Apps Script Backend URL */}
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-700/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-slate-200 font-semibold block text-xs">
+                      Google Apps Script Web App Link (گوگل لنک)
+                    </label>
+                    <p className="text-[11px] text-slate-400">
+                      یہ لنک محفوظ طور پر سرور کی الگ فائل <code className="text-emerald-400 font-mono">config/system-config.json</code> میں محفوظ ہوتا ہے۔
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={settingsForm.useGoogleAppsScript}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, useGoogleAppsScript: e.target.checked })}
+                      className="rounded text-emerald-600 focus:ring-emerald-500 bg-slate-900 border-slate-700"
+                    />
+                    <span className="text-emerald-400 font-semibold text-xs">فعال کریں (Enable Sync)</span>
+                  </label>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={settingsForm.googleWebAppUrl}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, googleWebAppUrl: e.target.value })}
+                    placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                    className="flex-1 p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 font-mono text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleTestGas}
+                    disabled={testingGas || !settingsForm.googleWebAppUrl}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium shrink-0 disabled:opacity-50 cursor-pointer"
+                  >
+                    {testingGas ? 'Testing...' : 'Test Link'}
+                  </button>
+                </div>
+
+                {gasTestResult && (
+                  <div className={`p-2.5 rounded-lg text-xs ${gasTestResult.success ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/50' : 'bg-rose-950/80 text-rose-300 border border-rose-500/50'}`}>
+                    {gasTestResult.message}
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-800">
@@ -1078,6 +1225,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* User Management & Password Change Modal */}
+      <UserManagementModal
+        isOpen={isUserManagementOpen}
+        onClose={() => setIsUserManagementOpen(false)}
+        currentUser={currentUser}
+        onUserUpdated={async () => {
+          await onRefreshData();
+        }}
+      />
     </div>
   );
 };

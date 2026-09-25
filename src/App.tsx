@@ -6,17 +6,15 @@ import { Header } from './components/Header';
 import { PublicRegistration } from './components/PublicRegistration';
 import { VerifyVoterModal } from './components/VerifyVoterModal';
 import { AdminDashboard } from './components/AdminDashboard';
-import { GoogleAppsScriptModal } from './components/GoogleAppsScriptModal';
 import { PrintTemplates } from './components/PrintTemplates';
 import { SecurityNotice } from './components/SecurityNotice';
-import { FileCode, Shield, CheckCircle, Heart, Phone } from 'lucide-react';
+import { Shield, CheckCircle, Phone } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('register');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
   const [voters, setVoters] = useState<Voter[]>([]);
   const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Print System State
   const [printState, setPrintState] = useState<{
@@ -29,9 +27,8 @@ export default function App() {
     votersList: [],
   });
 
-  // Modal States
+  // Modal State
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
-  const [isScriptModalOpen, setIsScriptModalOpen] = useState(false);
 
   // Sync dark mode class on <html> element
   useEffect(() => {
@@ -45,7 +42,6 @@ export default function App() {
   // Load Initial Data
   const loadData = async () => {
     try {
-      setIsLoading(true);
       const res = await ApiService.getAllData();
       setVoters(res.voters);
       if (res.settings) {
@@ -53,8 +49,6 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to load election data:', err);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -102,7 +96,6 @@ export default function App() {
         isDarkMode={isDarkMode}
         setIsDarkMode={setIsDarkMode}
         settings={settings}
-        onOpenScriptModal={() => setIsScriptModalOpen(true)}
         onToggleSecurity={handleToggleSecurity}
       />
 
@@ -153,7 +146,6 @@ export default function App() {
             onRefreshData={loadData}
             onSaveSettings={handleSaveSettings}
             onOpenPrint={handleOpenPrint}
-            onOpenScriptModal={() => setIsScriptModalOpen(true)}
           />
         )}
       </main>
@@ -171,14 +163,6 @@ export default function App() {
           setIsVerifyModalOpen(false);
           handleOpenPrint('certificate', v);
         }}
-      />
-
-      {/* Google Apps Script Modal */}
-      <GoogleAppsScriptModal
-        isOpen={isScriptModalOpen}
-        onClose={() => setIsScriptModalOpen(false)}
-        settings={settings}
-        onSaveSettings={handleSaveSettings}
       />
 
       {/* Print Templates (renders only when printing triggered) */}
@@ -208,16 +192,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
-              <button
-                type="button"
-                onClick={() => setIsScriptModalOpen(true)}
-                className="hover:text-emerald-400 flex items-center gap-1 transition-colors"
-              >
-                <FileCode className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Google Apps Script Backend API</span>
-              </button>
-              <span className="text-slate-700">&bull;</span>
+            <div className="flex items-center gap-4 text-xs text-slate-400">
               <span className="flex items-center gap-1">
                 <Phone className="w-3.5 h-3.5 text-slate-500" />
                 {settings.phone}

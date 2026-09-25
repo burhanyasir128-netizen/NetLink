@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActiveTab, SystemSettings } from '../types';
-import { ShieldCheck, Moon, Sun, Code, UserCheck, UserPlus, ShieldAlert, Cloud, Database } from 'lucide-react';
+import { ShieldCheck, Moon, Sun, UserCheck, UserPlus, ShieldAlert } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: ActiveTab;
@@ -9,7 +9,6 @@ interface HeaderProps {
   setIsDarkMode: (val: boolean) => void;
   settings: SystemSettings;
   onOpenSettings?: () => void;
-  onOpenScriptModal?: () => void;
   onToggleSecurity?: () => void;
 }
 
@@ -19,7 +18,6 @@ export const Header: React.FC<HeaderProps> = ({
   isDarkMode,
   setIsDarkMode,
   settings,
-  onOpenScriptModal,
   onToggleSecurity,
 }) => {
   return (
@@ -47,11 +45,11 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Navigation Items (Segmented buttons - no static pill clutter) */}
+          {/* Navigation Items (Clean segmented buttons) */}
           <nav className="hidden md:flex items-center gap-1.5 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
             <button
               onClick={() => setActiveTab('register')}
-              className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center gap-2 ${
+              className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'register'
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -63,7 +61,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={() => setActiveTab('verify')}
-              className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center gap-2 ${
+              className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'verify'
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -75,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={() => setActiveTab('admin')}
-              className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center gap-2 ${
+              className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'admin'
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -84,42 +82,14 @@ export const Header: React.FC<HeaderProps> = ({
               <ShieldCheck className="w-4 h-4" />
               <span>Admin Dashboard</span>
             </button>
-
-            <button
-              onClick={onOpenScriptModal}
-              className="px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium text-slate-400 hover:text-emerald-300 hover:bg-slate-800/60 transition-all flex items-center gap-2"
-              title="Google Apps Script (Code.gs) Source & Deployment"
-            >
-              <Code className="w-4 h-4 text-emerald-400" />
-              <span>Code.gs API</span>
-            </button>
           </nav>
 
-          {/* Right Controls: Backend Mode Indicator, Security Toggle, Theme Toggle */}
+          {/* Right Controls: Security Toggle & Theme Toggle */}
           <div className="flex items-center gap-2">
-            {/* Backend Indicator Badge */}
-            <div
-              onClick={onOpenScriptModal}
-              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] bg-slate-900/80 border border-slate-800 cursor-pointer hover:border-slate-700 transition-colors"
-              title={settings.useGoogleAppsScript ? 'Connected to Google Apps Script' : 'Using Local Persistent Storage (IndexedDB/Storage)'}
-            >
-              {settings.useGoogleAppsScript && settings.googleWebAppUrl ? (
-                <>
-                  <Cloud className="w-3.5 h-3.5 text-sky-400" />
-                  <span className="text-slate-300 font-mono">Google Apps Script</span>
-                </>
-              ) : (
-                <>
-                  <Database className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-slate-300">Local Persistent DB</span>
-                </>
-              )}
-            </div>
-
             {/* Client-side protection status */}
             <button
               onClick={onToggleSecurity}
-              className={`p-2 rounded-xl border text-xs transition-colors flex items-center gap-1.5 ${
+              className={`p-2 rounded-xl border text-xs transition-colors flex items-center gap-1.5 cursor-pointer ${
                 settings.securityProtectionEnabled
                   ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
                   : 'border-slate-800 text-slate-500 hover:text-slate-300 bg-slate-900'
@@ -139,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Theme Toggle */}
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-100 hover:border-slate-700 transition-colors"
+              className="p-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-100 hover:border-slate-700 transition-colors cursor-pointer"
               title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             >
               {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
@@ -175,13 +145,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <ShieldCheck className="w-3.5 h-3.5" />
             Admin
-          </button>
-          <button
-            onClick={onOpenScriptModal}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap text-emerald-400 flex items-center gap-1.5"
-          >
-            <Code className="w-3.5 h-3.5" />
-            Code.gs
           </button>
         </div>
       </div>

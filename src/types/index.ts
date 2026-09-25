@@ -1,3 +1,16 @@
+export type UserRole = 'super_admin' | 'admin' | 'data_entry' | 'viewer';
+
+export interface UserAccount {
+  id: string;
+  username: string;
+  fullName: string;
+  role: UserRole;
+  password?: string;
+  phone?: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+}
+
 export interface Voter {
   id: string;
   serialNumber: string;
@@ -37,3 +50,4 @@ export interface DuplicateCheckResult {
 export type ActiveTab = 'register' | 'verify' | 'admin' | 'script-info';
 
 export type PrintMode = 'none' | 'single-id' | 'all-ids' | 'list' | 'certificate';
+
