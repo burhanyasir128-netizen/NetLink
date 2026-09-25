@@ -29,7 +29,7 @@ var SHEET_NAME_VOTERS = "Voters";
 var SHEET_NAME_SETTINGS = "Settings";
 var SHEET_NAME_USERS = "Users";
 var DRIVE_FOLDER_NAME = "Voter_Photos_Election_Commission";
-var DEFAULT_ADMIN_PASSWORD = "admin";
+var DEFAULT_ADMIN_PASSWORD = "admin123";
 
 /**
  * Automatically create and format all sheets (Voters, Users, Settings)
