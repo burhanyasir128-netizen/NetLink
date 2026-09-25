@@ -1,0 +1,9 @@
+{
+  "name": "Official Voter Registration System - Election Commission",
+  "description": "Bilingual voter registration and management portal with Google Apps Script & Sheets integration, live CNIC/mobile validation, camera capture, ID card & A4 printing.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
