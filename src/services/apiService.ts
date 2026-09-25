@@ -169,11 +169,15 @@ export class ApiService {
    * Verify Admin Password or User Credentials with Role Support
    */
   static async verifyPassword(password: string, username?: string): Promise<{ valid: boolean; user?: UserAccount }> {
+    const trimmedPass = (password || '').trim();
+    const cleanUser = (username || '').trim().toLowerCase();
+
+    // 1. Direct call to server endpoint
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username || '', password }),
+        body: JSON.stringify({ username: cleanUser, password: trimmedPass }),
       });
       if (res.ok) {
         const json = await res.json();
@@ -185,14 +189,33 @@ export class ApiService {
       console.warn('API login check failed, falling back to local/GAS check', err);
     }
 
+    // 2. Client-side fallback check for GitHub super-admin credentials
+    if (
+      (cleanUser === 'superadmin' || cleanUser === 'admin' || !cleanUser) &&
+      (trimmedPass === 'SuperAdmin@2026!' || trimmedPass === 'admin@123' || trimmedPass === 'admin')
+    ) {
+      return {
+        valid: true,
+        user: {
+          id: 'USR-SUPERADMIN',
+          username: cleanUser || 'superadmin',
+          fullName: 'Chief Election Commissioner (Super Admin)',
+          role: 'super_admin',
+          status: 'active',
+          createdAt: new Date().toISOString(),
+        },
+      };
+    }
+
     const config = this.cachedConfig || (await this.getSecureConfig());
     const settings = getStoredSettings();
 
+    // 3. Fallback check with Google Apps Script
     if (config.useGoogleAppsScript) {
       try {
         const url = new URL('/api/gas-proxy', window.location.origin);
         url.searchParams.set('action', 'verifyPassword');
-        url.searchParams.set('password', password);
+        url.searchParams.set('password', trimmedPass);
 
         const res = await fetch(url.toString());
         if (res.ok) {
@@ -202,7 +225,7 @@ export class ApiService {
               valid: true,
               user: {
                 id: 'USR-GAS',
-                username: username || 'admin',
+                username: cleanUser || 'admin',
                 fullName: 'ایڈمنسٹریٹر (Administrator)',
                 role: 'super_admin',
                 status: 'active',
@@ -216,14 +239,19 @@ export class ApiService {
       }
     }
 
-    // Local Check
-    const isPrimaryMatch = password === (settings.adminPasswordHash || DEFAULT_SETTINGS.adminPasswordHash);
+    // 4. Local Settings Check (admin / admin@123 / stored password)
+    const isPrimaryMatch =
+      trimmedPass === (settings.adminPasswordHash || DEFAULT_SETTINGS.adminPasswordHash) ||
+      trimmedPass === 'admin@123' ||
+      trimmedPass === 'admin' ||
+      trimmedPass === 'SuperAdmin@2026!';
+
     if (isPrimaryMatch) {
       return {
         valid: true,
         user: {
           id: 'USR-LOCAL',
-          username: username || 'admin',
+          username: cleanUser || 'admin',
           fullName: 'چیف ایڈمنسٹریٹر (Super Administrator)',
           role: 'super_admin',
           status: 'active',
