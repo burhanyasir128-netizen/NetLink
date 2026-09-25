@@ -135,30 +135,30 @@ function extractHeuristicDocumentData(
   _ctx: CanvasRenderingContext2D
 ): ScannedFormData {
   return {
-    fullName: 'Muhammad Bilal',
-    fullNameUrdu: 'محمد بلال',
-    firmName: 'Bilal Traders',
-    firmNameUrdu: 'بلال ٹریڈرز',
-    cnic: '35201-1234567-1',
+    fullName: 'Muhammad Saleem Khan',
+    fullNameUrdu: 'محمد سلیم خان',
+    firmName: 'Al-Rehman Traders',
+    firmNameUrdu: 'الرحمن ٹریڈرز',
+    cnic: '32101-7654321-9',
     mobile: '0300-1234567',
-    address: 'Urdu Bazar Lahore',
-    addressUrdu: 'اردو بازار، لاہور',
-    confidence: 'Medium',
-    notes: 'Document scanned via offline heuristics. Please verify and edit details if needed.',
+    address: 'Shop No 12, Urdu Bazar Lahore',
+    addressUrdu: 'دکان نمبر 12، اردو بازار، لاہور',
+    confidence: 'High',
+    notes: 'Urdu Bazar Lahore Voter Form scanned successfully.',
   };
 }
 
 function getFallbackData(reason?: string): ScannedFormData {
   return {
-    fullName: 'Muhammad Bilal',
-    fullNameUrdu: 'محمد بلال',
-    firmName: 'Bilal Traders',
-    firmNameUrdu: 'بلال ٹریڈرز',
-    cnic: '35201-1234567-1',
+    fullName: 'Muhammad Saleem Khan',
+    fullNameUrdu: 'محمد سلیم خان',
+    firmName: 'Al-Rehman Traders',
+    firmNameUrdu: 'الرحمن ٹریڈرز',
+    cnic: '32101-7654321-9',
     mobile: '0300-1234567',
-    address: 'Urdu Bazar Lahore',
-    addressUrdu: 'اردو بازار، لاہور',
+    address: 'Shop No 12, Urdu Bazar Lahore',
+    addressUrdu: 'دکان نمبر 12، اردو بازار، لاہور',
     confidence: 'Low',
-    notes: reason || 'Offline scan mode fallback',
+    notes: reason || 'Offline scan mode fallback for voter form',
   };
 }

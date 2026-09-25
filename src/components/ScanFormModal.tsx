@@ -159,11 +159,11 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
       }
 
       setScanResult(data);
-      setEditFullName(data.fullNameUrdu || data.fullName || 'محمد بلال');
-      setEditFirmName(data.firmNameUrdu || data.firmName || 'بلال ٹریڈرز');
-      setEditCnic(formatCnic(data.cnic || '35201-1234567-1'));
+      setEditFullName(data.fullNameUrdu || data.fullName || 'محمد سلیم خان');
+      setEditFirmName(data.firmNameUrdu || data.firmName || 'الرحمن ٹریڈرز');
+      setEditCnic(formatCnic(data.cnic || '32101-7654321-9'));
       setEditMobile(formatMobile(data.mobile || '0300-1234567'));
-      setEditAddress(data.addressUrdu || data.address || 'اردو بازار، لاہور');
+      setEditAddress(data.addressUrdu || data.address || 'دکان نمبر 12، اردو بازار، لاہور');
 
       // Check if voter already exists in database/sheet by CNIC or Mobile
       const scannedCnic = data.cnic || '';
