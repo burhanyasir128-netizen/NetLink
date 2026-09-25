@@ -59,38 +59,52 @@ async function startServer() {
 
 
   // Initialize Gemini AI
-  const apiKey = process.env.GEMINI_API_KEY || '';
-  const ai = apiKey ? new GoogleGenAI({ apiKey }) : new GoogleGenAI();
+  const ai = new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY || '',
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
 
   /**
    * Helper: Generate content with automatic model fallback & retry for 503/429 spikes
    */
   async function generateContentWithFallback(requestConfig: any) {
-    // Valid models from @google/genai guidelines: gemini-3.8-flash and alias gemini-flash-latest
-    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest'];
+    // Valid models from @google/genai guidelines
+    const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
     let lastError: any = null;
 
     for (const model of candidateModels) {
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 0; attempt < 3; attempt++) {
         try {
           const response = await ai.models.generateContent({
             ...requestConfig,
             model,
           });
-          return response;
+          if (response && response.text) {
+            return response;
+          }
         } catch (err: any) {
           lastError = err;
           const errMsg = err?.message || JSON.stringify(err);
-          const isOverloaded = errMsg.includes('503') || errMsg.includes('high demand') || errMsg.includes('UNAVAILABLE') || errMsg.includes('429');
+          const isOverloaded =
+            errMsg.includes('503') ||
+            errMsg.includes('high demand') ||
+            errMsg.includes('UNAVAILABLE') ||
+            errMsg.includes('429') ||
+            errMsg.includes('ResourceExhausted') ||
+            errMsg.includes('RESOURCE_EXHAUSTED') ||
+            errMsg.includes('quota');
 
           console.warn(`[Gemini API] Model ${model} attempt ${attempt + 1} failed:`, errMsg);
 
-          if (isOverloaded && attempt === 0) {
-            // Short backoff before retrying
-            await new Promise((r) => setTimeout(r, 600));
+          if (isOverloaded && attempt < 2) {
+            // Exponential backoff
+            await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
             continue;
           }
-          // If overloaded or failed on second attempt, break to next candidate model
           break;
         }
       }
@@ -119,32 +133,33 @@ async function startServer() {
         data = parts[1];
       }
 
-      const prompt = `You are a specialized Urdu and English Document Analysis & OCR engine for Pakistani voter registration forms, CNIC cards, vouchers, and Urdu Bazar Lahore documents.
-Carefully examine this image and read the EXACT text written on the document:
+      const prompt = `You are a high-accuracy Document Analysis & Vision OCR engine specialized in Pakistani Urdu Voter Registration Forms (specifically Urdu Bazar Lahore - انجمن تاجران اردو بازار لاہور), CNIC cards, and handwritten business slips.
 
-1. Full Name (بنام ووٹر / Voter Name): Read the exact Urdu or English name written on the document.
-2. Firm or Shop Name (نام فرم یا دکان / Business Name): Read the exact business/shop name written on the document.
-3. CNIC Number (شناختی کارڈ نمبر): Extract the 13-digit Pakistani CNIC number (format: XXXXX-XXXXXXX-X).
-4. Mobile Phone Number (موبائل فون نمبر): Extract any 11-digit mobile number starting with 03.
-5. Complete Address (مکمل پتہ / Address): Extract the shop or residential address.
+Look closely at the document image and extract the exact details:
+1. Voter Name / Owner Name (بنام ووٹر / نام مالک): Read the exact handwritten or printed Urdu name (e.g., "محمد علی اظہر").
+2. Firm or Shop Name (فرم / دکان کا نام): Read the exact business/firm name (e.g., "بک فیکٹری", "سنگ میل پبلی کیشنز").
+3. CNIC Number (شناختی کارڈ نمبر): Extract the 13 digits (even if written in separate boxed cells, e.g. 1 2 3 4 5 6 7 8 9 1 1 2 3 -> format as 12345-6789112-3).
+4. Mobile Phone Number (موبائل نمبر / فون نمبر): Extract the 11-digit mobile number starting with 03 (e.g., "0300-4802208").
+5. Complete Address (مکمل پتہ / دکان پتہ): Extract the shop or postal address (e.g., "4- اردو بازار لاہور").
 
-CRITICAL RULES:
-- Extract ONLY the actual text visible in the image. NEVER invent, guess, or use sample/placeholder names.
-- If text is written in Urdu in the picture, preserve the exact Urdu spelling in fullNameUrdu, firmNameUrdu, and addressUrdu.
-- If a field is not present or cannot be read from the image, return an empty string "" for that field.
+STRICT RULES:
+- Extract ONLY what is visible in the provided image. NEVER use placeholder, sample, or dummy names.
+- Extract the exact Urdu text as written on the form in fullNameUrdu, firmNameUrdu, and addressUrdu.
+- Provide clean English transliterations in fullName, firmName, address.
+- If a field is blank or missing on the form, return an empty string "".
 
-Return a JSON object with:
+Respond ONLY with valid JSON in this exact structure without markdown code fences:
 {
-  "fullName": "English transliteration or original English name",
-  "fullNameUrdu": "Exact Urdu name (بنام ووٹر)",
-  "firmName": "English transliteration or original English firm name",
-  "firmNameUrdu": "Exact Urdu firm name (نام فرم / دکان)",
-  "cnic": "XXXXX-XXXXXXX-X or empty string",
-  "mobile": "03XXXXXXXXX or empty string",
-  "address": "English address or transliteration",
-  "addressUrdu": "Exact Urdu address (مکمل پتہ)",
-  "confidence": "High" | "Medium" | "Low",
-  "notes": "Brief note on what was detected"
+  "fullName": "Extracted English name",
+  "fullNameUrdu": "اصل اردو نام (مثلاً محمد علی اظہر)",
+  "firmName": "Extracted English firm name",
+  "firmNameUrdu": "اصل اردو فرم کا نام (مثلاً بک فیکٹری)",
+  "cnic": "XXXXX-XXXXXXX-X",
+  "mobile": "03XXXXXXXXX",
+  "address": "Extracted English address",
+  "addressUrdu": "اصل پتہ اردو میں (مثلاً 4- اردو بازار لاہور)",
+  "confidence": "High",
+  "notes": "Extracted from Urdu Bazar voter form"
 }`;
 
       const response = await generateContentWithFallback({
