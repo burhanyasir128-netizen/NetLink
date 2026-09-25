@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { SystemSettings, Voter, PrintMode, UserAccount } from '../types';
 import { ApiService } from '../services/apiService';
+import { AiService } from '../services/aiService';
 import { getDirectImageUrl } from '../services/driveHelper';
 import { formatDate, formatCnic, formatMobile } from '../utils/formatters';
 import { UserManagementModal } from './UserManagementModal';
@@ -220,9 +221,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleSaveEdit = async () => {
     if (!selectedVoter) return;
     try {
+      let finalName = editFormData.fullName || selectedVoter.fullName;
+      let finalFirm = editFormData.firmName || selectedVoter.firmName;
+      let finalAddress = editFormData.address || selectedVoter.address;
+
+      // Auto-transliterate if contains English
+      if (/[a-zA-Z]/.test(finalName) || /[a-zA-Z]/.test(finalFirm) || /[a-zA-Z]/.test(finalAddress)) {
+        try {
+          const trans = await AiService.translateToUrdu({
+            fullName: finalName,
+            firmName: finalFirm,
+            address: finalAddress,
+          });
+          if (trans.success && trans.data) {
+            if (trans.data.fullNameUrdu) finalName = trans.data.fullNameUrdu;
+            if (trans.data.firmNameUrdu) finalFirm = trans.data.firmNameUrdu;
+            if (trans.data.addressUrdu) finalAddress = trans.data.addressUrdu;
+          }
+        } catch {
+          // fallback to original
+        }
+      }
+
       const updated: Voter = {
         ...selectedVoter,
         ...editFormData,
+        fullName: finalName,
+        firmName: finalFirm,
+        address: finalAddress,
       } as Voter;
 
       const res = await ApiService.editVoter(updated);
@@ -264,12 +290,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleQuickAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let finalName = newVoterForm.fullName.trim();
+      let finalFirm = newVoterForm.firmName.trim();
+      let finalAddress = newVoterForm.address.trim();
+
+      if (/[a-zA-Z]/.test(finalName) || /[a-zA-Z]/.test(finalFirm) || /[a-zA-Z]/.test(finalAddress)) {
+        try {
+          const trans = await AiService.translateToUrdu({
+            fullName: finalName,
+            firmName: finalFirm,
+            address: finalAddress,
+          });
+          if (trans.success && trans.data) {
+            if (trans.data.fullNameUrdu) finalName = trans.data.fullNameUrdu;
+            if (trans.data.firmNameUrdu) finalFirm = trans.data.firmNameUrdu;
+            if (trans.data.addressUrdu) finalAddress = trans.data.addressUrdu;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       const res = await ApiService.registerVoter({
-        fullName: newVoterForm.fullName,
-        firmName: newVoterForm.firmName,
+        fullName: finalName,
+        firmName: finalFirm,
         cnic: newVoterForm.cnic,
         mobile: newVoterForm.mobile,
-        address: newVoterForm.address,
+        address: finalAddress,
         photoUrl: newVoterForm.photoUrl,
         status: 'Verified',
       });

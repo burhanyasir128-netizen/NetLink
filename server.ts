@@ -302,7 +302,7 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
       let matchedUser = users.find(
         (u) =>
           (cleanUsername ? u.username?.toLowerCase() === cleanUsername : true) &&
-          (u.password?.trim() === cleanPassword || (cleanPassword === 'admin123' && (u.role === 'super_admin' || !u.role))) &&
+          (String(u.password || '').trim() === cleanPassword || (cleanPassword === 'admin123' && (u.role === 'super_admin' || !u.role))) &&
           (u.status === 'active' || !u.status)
       );
 
@@ -313,6 +313,43 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
           success: true,
           user: safeUser,
         });
+      }
+
+      // 3. Check Google Sheet Settings tab adminPassword
+      if (config.useGoogleAppsScript && config.googleWebAppUrl) {
+        try {
+          const gasSettingsUrl = new URL(config.googleWebAppUrl);
+          gasSettingsUrl.searchParams.set('action', 'getAll');
+          gasSettingsUrl.searchParams.set('secret', 'VoterPortal2026SecureKey');
+          const sController = new AbortController();
+          const sTimeout = setTimeout(() => sController.abort(), 3500);
+          const sRes = await fetch(gasSettingsUrl.toString(), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            signal: sController.signal,
+          });
+          clearTimeout(sTimeout);
+          if (sRes.ok) {
+            const sData = await sRes.json();
+            if (sData.settings) {
+              const sheetPass = sData.settings.adminPassword || sData.settings.adminPasswordHash;
+              if (sheetPass && String(sheetPass).trim() === cleanPassword) {
+                return res.json({
+                  success: true,
+                  user: {
+                    id: 'USR-SHEET-ADMIN',
+                    username: cleanUsername || 'admin',
+                    fullName: 'چیف ایڈمنسٹریٹر (Sheet Admin)',
+                    role: 'super_admin',
+                    status: 'active',
+                  },
+                });
+              }
+            }
+          }
+        } catch {
+          // ignore error and proceed to local fallback
+        }
       }
 
       // 3. Fallback: Check if password matches any active user when username is blank or default

@@ -336,7 +336,7 @@ export class ApiService {
               const matched = data.users.find(
                 (u: any) =>
                   (cleanUser ? u.username?.toLowerCase() === cleanUser : true) &&
-                  (u.password?.trim() === trimmedPass || (trimmedPass === 'admin123' && (u.role === 'super_admin' || !u.role))) &&
+                  (String(u.password || '').trim() === trimmedPass || (trimmedPass === 'admin123' && (u.role === 'super_admin' || !u.role))) &&
                   (u.status === 'active' || !u.status)
               );
               if (matched) {
@@ -348,6 +348,42 @@ export class ApiService {
         }
       } catch (err) {
         console.warn('Direct Google Apps Script user fetch check failed:', err);
+      }
+
+      // 2b. Check Google Sheet Settings tab password via direct getAll
+      try {
+        const gasUrl = new URL(webAppUrl);
+        gasUrl.searchParams.set('action', 'getAll');
+        gasUrl.searchParams.set('secret', 'VoterPortal2026SecureKey');
+
+        const res = await fetch(gasUrl.toString(), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        });
+        if (res.ok) {
+          const text = await res.text();
+          if (text && !text.trim().startsWith('<')) {
+            const data = JSON.parse(text);
+            if (data.settings) {
+              const sheetPass = data.settings.adminPassword || data.settings.adminPasswordHash;
+              if (sheetPass && String(sheetPass).trim() === trimmedPass) {
+                return {
+                  valid: true,
+                  user: {
+                    id: 'USR-SHEET-ADMIN',
+                    username: cleanUser || 'admin',
+                    fullName: 'چیف ایڈمنسٹریٹر (Sheet Admin)',
+                    role: 'super_admin',
+                    status: 'active',
+                    createdAt: new Date().toISOString(),
+                  },
+                };
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Direct GAS getAll settings password check failed:', err);
       }
 
       // 2b. Direct verifyPassword action in Google Apps Script
