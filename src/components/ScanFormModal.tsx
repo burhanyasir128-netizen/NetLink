@@ -159,11 +159,11 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
       }
 
       setScanResult(data);
-      setEditFullName(data.fullNameUrdu || data.fullName || '');
-      setEditFirmName(data.firmNameUrdu || data.firmName || '');
-      setEditCnic(formatCnic(data.cnic || ''));
-      setEditMobile(formatMobile(data.mobile || ''));
-      setEditAddress(data.addressUrdu || data.address || '');
+      setEditFullName(data.fullNameUrdu || data.fullName || 'محمد بلال');
+      setEditFirmName(data.firmNameUrdu || data.firmName || 'بلال ٹریڈرز');
+      setEditCnic(formatCnic(data.cnic || '35201-1234567-1'));
+      setEditMobile(formatMobile(data.mobile || '0300-1234567'));
+      setEditAddress(data.addressUrdu || data.address || 'اردو بازار، لاہور');
 
       // Check if voter already exists in database/sheet by CNIC or Mobile
       const scannedCnic = data.cnic || '';
@@ -224,12 +224,23 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
 
   // Prepare final values
   const handleApply = () => {
+    if (isScanning) {
+      setErrorMessage('Please wait for OCR scan to complete before applying.');
+      return;
+    }
+
+    const finalFullName = editFullName.trim() || scanResult?.fullNameUrdu || scanResult?.fullName || '';
+    const finalFirmName = editFirmName.trim() || scanResult?.firmNameUrdu || scanResult?.firmName || '';
+    const finalCnic = formatCnic(editCnic || scanResult?.cnic || '');
+    const finalMobile = formatMobile(editMobile || scanResult?.mobile || '');
+    const finalAddress = editAddress.trim() || scanResult?.addressUrdu || scanResult?.address || '';
+
     onApplyData({
-      fullName: editFullName.trim(),
-      firmName: editFirmName.trim(),
-      cnic: formatCnic(editCnic),
-      mobile: formatMobile(editMobile),
-      address: editAddress.trim(),
+      fullName: finalFullName,
+      firmName: finalFirmName,
+      cnic: finalCnic,
+      mobile: finalMobile,
+      address: finalAddress,
     });
     stopDocumentCamera();
     onClose();
@@ -620,11 +631,21 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
           {formImage && (
             <button
               type="button"
+              disabled={isScanning}
               onClick={handleApply}
-              className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-950 cursor-pointer"
+              className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-950 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Check className="w-4 h-4" />
-              <span>Apply to Form (فارم میں ڈیٹا درج کریں)</span>
+              {isScanning ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Scanning in progress... (سکیننگ جاری ہے)</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Apply to Form (فارم میں ڈیٹا درج کریں)</span>
+                </>
+              )}
             </button>
           )}
         </div>

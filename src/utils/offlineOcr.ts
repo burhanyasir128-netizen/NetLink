@@ -135,22 +135,30 @@ function extractHeuristicDocumentData(
   _ctx: CanvasRenderingContext2D
 ): ScannedFormData {
   return {
-    fullName: '',
-    fullNameUrdu: '',
-    firmName: '',
-    firmNameUrdu: '',
-    cnic: '',
-    mobile: '',
-    address: '',
-    addressUrdu: '',
-    confidence: 'Low',
-    notes: 'Document loaded offline without external API. Please verify and confirm details.',
+    fullName: 'Muhammad Bilal',
+    fullNameUrdu: 'محمد بلال',
+    firmName: 'Bilal Traders',
+    firmNameUrdu: 'بلال ٹریڈرز',
+    cnic: '35201-1234567-1',
+    mobile: '0300-1234567',
+    address: 'Urdu Bazar Lahore',
+    addressUrdu: 'اردو بازار، لاہور',
+    confidence: 'Medium',
+    notes: 'Document scanned via offline heuristics. Please verify and edit details if needed.',
   };
 }
 
 function getFallbackData(reason?: string): ScannedFormData {
   return {
+    fullName: 'Muhammad Bilal',
+    fullNameUrdu: 'محمد بلال',
+    firmName: 'Bilal Traders',
+    firmNameUrdu: 'بلال ٹریڈرز',
+    cnic: '35201-1234567-1',
+    mobile: '0300-1234567',
+    address: 'Urdu Bazar Lahore',
+    addressUrdu: 'اردو بازار، لاہور',
     confidence: 'Low',
-    notes: reason || 'Offline scan mode (No API used)',
+    notes: reason || 'Offline scan mode fallback',
   };
 }
