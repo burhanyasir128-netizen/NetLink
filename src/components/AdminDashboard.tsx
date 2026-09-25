@@ -27,12 +27,16 @@ import {
   Shield,
   KeyRound,
   UserCheck,
+  Code,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { SystemSettings, Voter, PrintMode, UserAccount } from '../types';
 import { ApiService } from '../services/apiService';
 import { getDirectImageUrl } from '../services/driveHelper';
 import { formatDate, formatCnic, formatMobile } from '../utils/formatters';
 import { UserManagementModal } from './UserManagementModal';
+import { GOOGLE_APPS_SCRIPT_SOURCE } from '../constants/googleScriptCode';
 
 interface AdminDashboardProps {
   voters: Voter[];
@@ -89,6 +93,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [settingsSaveMsg, setSettingsSaveMsg] = useState<string | null>(null);
   const [testingGas, setTestingGas] = useState(false);
   const [gasTestResult, setGasTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isScriptModalOpen, setIsScriptModalOpen] = useState(false);
+  const [isCodeCopied, setIsCodeCopied] = useState(false);
+
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_SOURCE);
+      setIsCodeCopied(true);
+      setTimeout(() => setIsCodeCopied(false), 2500);
+    } catch {
+      // Fallback
+    }
+  };
 
   // Quick Add Voter Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -1233,6 +1249,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </button>
                   </div>
 
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsScriptModalOpen(true)}
+                      className="px-3 py-1.5 rounded-lg bg-sky-950/80 border border-sky-500/40 hover:bg-sky-900/60 text-sky-300 font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Code className="w-3.5 h-3.5" />
+                      <span>ایپس اسکرپٹ کا مکمل کوڈ حاصل کریں (View & Copy Apps Script Code)</span>
+                    </button>
+                    <span className="text-[11px] text-slate-400">
+                      کوڈ کو Google Sheet &gt; Extensions &gt; Apps Script میں پیسٹ کریں
+                    </span>
+                  </div>
+
                   {settingsForm.googleWebAppUrl && settingsForm.googleWebAppUrl.includes('docs.google.com/spreadsheets') && (
                     <div className="p-2.5 rounded-lg bg-amber-950/70 border border-amber-500/50 text-amber-200 text-xs">
                       ⚠️ آپ نے گوگل شیٹ کا ایڈٹ لنک درج کیا ہے۔ سسٹم کو کنیکٹ کرنے کے لیے شیٹ کے اندر <strong>Extensions &gt; Apps Script &gt; Deploy &gt; Web App</strong> سے حاصل کردہ <strong>Web app URL</strong> (جو کہ <code>/exec</code> پر ختم ہوتا ہے) درج کریں۔
@@ -1284,6 +1314,89 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           await onRefreshData();
         }}
       />
+
+      {/* Apps Script Code Modal */}
+      {isScriptModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-4xl max-h-[90vh] rounded-3xl flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center font-mono">
+                  &lt;/&gt;
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    گوگل ایپس اسکرپٹ مکمل کوڈ (Code.gs)
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    یہ کوڈ اپنی گوگل شیٹ کے Apps Script ایڈیٹر میں پیسٹ کریں اور Deploy کریں۔
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-md transition-colors cursor-pointer"
+                >
+                  {isCodeCopied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{isCodeCopied ? 'کوڈ کاپی ہو گیا! (Copied)' : 'Copy Code (کوڈ کاپی کریں)'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsScriptModalOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick deployment guide steps */}
+            <div className="bg-slate-950/90 border-b border-slate-800 p-3 sm:p-4 text-xs text-slate-300 grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+              <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="font-bold text-emerald-400 block mb-0.5">1. شیٹ کھولیں</span>
+                <p className="text-[11px] text-slate-400">Google Sheet میں Extensions &gt; Apps Script کھولیں۔</p>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="font-bold text-sky-400 block mb-0.5">2. پرانا کوڈ ہٹا کر پیسٹ کریں</span>
+                <p className="text-[11px] text-slate-400">Code.gs کا پرانا سب کچھ ہٹا کر یہ کاپی شدہ کوڈ پیسٹ کریں۔</p>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="font-bold text-amber-400 block mb-0.5">3. Deploy &gt; Web app</span>
+                <p className="text-[11px] text-slate-400">Execute as: <strong>Me</strong>، Who has access: <strong>Anyone</strong> منتخب کریں۔</p>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="font-bold text-teal-400 block mb-0.5">4. Web App URL لگائیں</span>
+                <p className="text-[11px] text-slate-400">حاصل کردہ Web App URL (جو /exec پر ختم ہوتا ہے) سیٹنگز میں ڈالیں۔</p>
+              </div>
+            </div>
+
+            {/* Code Box */}
+            <div className="flex-1 overflow-auto p-4 bg-slate-950 font-mono text-xs text-slate-200">
+              <pre className="whitespace-pre overflow-x-auto leading-relaxed select-all">
+                <code>{GOOGLE_APPS_SCRIPT_SOURCE}</code>
+              </pre>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-400">
+                مجموعی لائنز: 600+ | آٹو تصویر ڈرائیو اپلوڈ + ووٹر لسٹ + یوزرز رول سپورٹ
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyCode}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                {isCodeCopied ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
+                <span>{isCodeCopied ? 'کوڈ کاپی ہو گیا! (Copied)' : 'مکمل کوڈ کاپی کریں (Copy Entire Code)'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

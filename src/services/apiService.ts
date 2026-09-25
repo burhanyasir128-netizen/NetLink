@@ -481,7 +481,25 @@ export class ApiService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-      const data = await res.json();
+
+      const text = await res.text();
+      if (!text || !text.trim()) {
+        return {
+          success: false,
+          message: 'سرور یا گوگل ایپس اسکرپٹ سے خالی جواب ملا (Empty response received). براہ کرم گوگل ویب ایپ کا لنک چیک کریں۔',
+        };
+      }
+
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        return {
+          success: false,
+          message: `غیر متوقع جواب موصول ہوا: ${text.slice(0, 150)}`,
+        };
+      }
+
       return {
         success: Boolean(data.success),
         message: data.message || (data.success ? 'Connected successfully' : 'Connection failed'),
