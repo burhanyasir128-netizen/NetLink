@@ -461,34 +461,83 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
   app.post('/api/test-gas', async (req, res) => {
     try {
       const { url } = req.body;
-      const targetUrl = url || getSystemConfig().googleWebAppUrl;
+      const rawUrl = (url || getSystemConfig().googleWebAppUrl || '').trim();
 
-      if (!targetUrl || !targetUrl.trim().startsWith('http')) {
-        return res.status(400).json({ success: false, message: 'Please provide a valid Google Apps Script Web App URL.' });
+      if (!rawUrl || !rawUrl.startsWith('http')) {
+        return res.status(400).json({
+          success: false,
+          message: 'براہ کرم درست گوگل ایپس اسکرپٹ ویب ایپ کا لنک درج کریں۔ (Please provide a valid Web App URL)',
+        });
       }
 
-      const pingUrl = new URL(targetUrl.trim());
+      // Detect if user mistakenly entered Google Spreadsheet link instead of Web App Exec link
+      if (rawUrl.includes('docs.google.com/spreadsheets')) {
+        return res.json({
+          success: false,
+          message:
+            '⚠️ آپ نے گوگل شیٹ کا براہِ راست لنک درج کیا ہے! آپ کو گوگل شیٹ کی بجائے Apps Script Web App کا لنک (جو /exec پر ختم ہوتا ہے) درج کرنا ہوگا۔ Extensions > Apps Script > Deploy > Web App سے حاصل کریں۔',
+        });
+      }
+
+      if (!rawUrl.includes('/exec')) {
+        return res.json({
+          success: false,
+          message:
+            '⚠️ لنک کے آخر میں /exec ہونا ضروری ہے۔ اگر لنک /edit پر ختم ہو رہا ہے تو Apps Script میں Deploy > Web app کر کے "Web app URL" کاپی کریں۔',
+        });
+      }
+
+      const pingUrl = new URL(rawUrl);
       pingUrl.searchParams.set('action', 'ping');
 
       const fetchRes = await fetch(pingUrl.toString(), {
         method: 'GET',
-        headers: { 'Accept': 'application/json' },
+        headers: { Accept: 'application/json, text/plain, */*' },
+        redirect: 'follow',
       });
 
-      if (!fetchRes.ok) {
-        return res.status(500).json({ success: false, message: `Server returned HTTP ${fetchRes.status}` });
+      const responseText = await fetchRes.text();
+
+      // Check if Google returned HTML login page (Permissions error: Who has access was not set to Anyone)
+      if (responseText.trim().startsWith('<') || responseText.includes('<!DOCTYPE') || responseText.includes('<html')) {
+        if (responseText.includes('Service Login') || responseText.includes('accounts.google.com')) {
+          return res.json({
+            success: false,
+            message:
+              '⚠️ اجازت کا مسئلہ (Permission Issue): گوگل اسکرپٹ ڈپلائمنٹ میں "Who has access" کو "Anyone" پر سیٹ نہیں کیا گیا! Apps Script میں جا کر Manage Deployments میں Who has access: "Anyone" سلیکٹ کریں۔',
+          });
+        }
+        return res.json({
+          success: false,
+          message:
+            '⚠️ گوگل نے JSON کی بجائے HTML پیج واپس کیا۔ تصدیق کریں کہ Web App کی اجازت "Anyone" پر ہے اور لنک /exec پر ختم ہو رہا ہے۔',
+        });
       }
 
-      const data = await fetchRes.json();
-      return res.json({
-        success: Boolean(data.success),
-        message: data.message || 'Connected to Google Apps Script successfully',
-        timestamp: data.timestamp,
-      });
+      try {
+        const data = JSON.parse(responseText);
+        if (data && (data.success || data.message || data.status === 'ok')) {
+          return res.json({
+            success: true,
+            message: 'کامیابی! گوگل شیٹ اور ایپس اسکرپٹ کامیابی سے منسلک ہو گئے ہیں (Connected successfully)',
+            timestamp: data.timestamp || new Date().toISOString(),
+          });
+        } else {
+          return res.json({
+            success: false,
+            message: data.error || data.message || 'گوگل اسکرپٹ نے غیر متوقع جواب دیا',
+          });
+        }
+      } catch (parseErr) {
+        return res.json({
+          success: false,
+          message: `گوگل ایپس اسکرپٹ کا جواب درست JSON فارمیٹ میں نہیں تھا: ${responseText.slice(0, 150)}`,
+        });
+      }
     } catch (err: any) {
-      return res.status(500).json({
+      return res.json({
         success: false,
-        message: err.message || 'Could not connect to Google Apps Script Web App',
+        message: err.message || 'گوگل ایپس اسکرپٹ سے رابطہ نہیں ہو سکا',
       });
     }
   });
@@ -513,10 +562,19 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
 
       const fetchRes = await fetch(targetUrl.toString(), {
         method: 'GET',
-        headers: { 'Accept': 'application/json' },
+        headers: { Accept: 'application/json, text/plain, */*' },
+        redirect: 'follow',
       });
 
-      const data = await fetchRes.json();
+      const responseText = await fetchRes.text();
+      if (responseText.trim().startsWith('<') || responseText.includes('<!DOCTYPE')) {
+        return res.status(500).json({
+          success: false,
+          error: 'Google Apps Script returned HTML instead of JSON. Ensure "Who has access" is set to "Anyone".',
+        });
+      }
+
+      const data = JSON.parse(responseText);
       return res.json(data);
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message || 'Proxy GET error' });
@@ -537,9 +595,18 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(req.body),
+        redirect: 'follow',
       });
 
-      const data = await fetchRes.json();
+      const responseText = await fetchRes.text();
+      if (responseText.trim().startsWith('<') || responseText.includes('<!DOCTYPE')) {
+        return res.status(500).json({
+          success: false,
+          error: 'Google Apps Script returned HTML instead of JSON. Ensure "Who has access" is set to "Anyone".',
+        });
+      }
+
+      const data = JSON.parse(responseText);
       return res.json(data);
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message || 'Proxy POST error' });
