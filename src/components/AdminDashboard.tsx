@@ -27,16 +27,12 @@ import {
   Shield,
   KeyRound,
   UserCheck,
-  Code,
-  Copy,
-  Check,
 } from 'lucide-react';
 import { SystemSettings, Voter, PrintMode, UserAccount } from '../types';
 import { ApiService } from '../services/apiService';
 import { getDirectImageUrl } from '../services/driveHelper';
 import { formatDate, formatCnic, formatMobile } from '../utils/formatters';
 import { UserManagementModal } from './UserManagementModal';
-import { GOOGLE_APPS_SCRIPT_SOURCE } from '../constants/googleScriptCode';
 
 interface AdminDashboardProps {
   voters: Voter[];
@@ -91,20 +87,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsForm, setSettingsForm] = useState<SystemSettings>(settings);
   const [settingsSaveMsg, setSettingsSaveMsg] = useState<string | null>(null);
-  const [testingGas, setTestingGas] = useState(false);
-  const [gasTestResult, setGasTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [isScriptModalOpen, setIsScriptModalOpen] = useState(false);
-  const [isCodeCopied, setIsCodeCopied] = useState(false);
-
-  const handleCopyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_SOURCE);
-      setIsCodeCopied(true);
-      setTimeout(() => setIsCodeCopied(false), 2500);
-    } catch {
-      // Fallback
-    }
-  };
 
   // Quick Add Voter Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -315,34 +297,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     e.preventDefault();
     setSettingsSaveMsg(null);
     try {
-      const isSuper = currentUser?.role === 'super_admin';
-      const cleanUrl = (settingsForm.googleWebAppUrl || '').trim();
-
-      if (isSuper && settingsForm.useGoogleAppsScript && cleanUrl.includes('docs.google.com/spreadsheets')) {
-        setSettingsSaveMsg('⚠️ غلط لنک: آپ گوگل شیٹ کا براؤزر لنک لگا رہے ہیں۔ شیٹ کے اندر Extensions > Apps Script > Deploy > Web App سے حاصل کردہ لنک لگائیں جس کے آخر میں /exec ہو۔');
-        return;
-      }
-
       // Save configuration securely into separate config/system-config.json file
-      if (isSuper) {
-        await ApiService.saveSecureConfig({
-          googleWebAppUrl: cleanUrl,
-          useGoogleAppsScript: settingsForm.useGoogleAppsScript,
-          adminPassword: settingsForm.adminPasswordHash,
-        });
-      } else {
-        // Non-super admins only update local presentation settings, without changing Google Sheet link
-        await ApiService.saveSecureConfig({
-          googleWebAppUrl: settings.googleWebAppUrl,
-          useGoogleAppsScript: settings.useGoogleAppsScript,
-          adminPassword: settingsForm.adminPasswordHash,
-        });
-      }
+      await ApiService.saveSecureConfig({
+        googleWebAppUrl: settings.googleWebAppUrl,
+        useGoogleAppsScript: settings.useGoogleAppsScript,
+        adminPassword: settingsForm.adminPasswordHash,
+      });
 
       await onSaveSettings({
         ...settingsForm,
-        googleWebAppUrl: isSuper ? cleanUrl : settings.googleWebAppUrl,
-        useGoogleAppsScript: isSuper ? settingsForm.useGoogleAppsScript : settings.useGoogleAppsScript,
+        googleWebAppUrl: settings.googleWebAppUrl,
+        useGoogleAppsScript: settings.useGoogleAppsScript,
       });
 
       setSettingsSaveMsg('سیٹنگز کامیابی سے محفوظ ہو گئی ہیں! (Settings Saved)');
@@ -352,19 +317,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }, 1500);
     } catch (err: any) {
       setSettingsSaveMsg('Error saving settings: ' + err.message);
-    }
-  };
-
-  const handleTestGas = async () => {
-    setTestingGas(true);
-    setGasTestResult(null);
-    try {
-      const res = await ApiService.testGasConnection(settingsForm.googleWebAppUrl);
-      setGasTestResult(res);
-    } catch (err: any) {
-      setGasTestResult({ success: false, message: err.message || 'Connection test failed' });
-    } finally {
-      setTestingGas(false);
     }
   };
 
@@ -568,15 +520,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin') && (
             <button
               type="button"
-              onClick={async () => {
-                const isSuper = currentUser?.role === 'super_admin';
-                const secConfig = isSuper ? await ApiService.getSecureConfig() : { googleWebAppUrl: '', useGoogleAppsScript: false };
-                setSettingsForm({
-                  ...settings,
-                  googleWebAppUrl: isSuper ? secConfig.googleWebAppUrl : '',
-                  useGoogleAppsScript: isSuper ? secConfig.useGoogleAppsScript : false,
-                });
-                setGasTestResult(null);
+              onClick={() => {
+                setSettingsForm(settings);
                 setIsSettingsOpen(true);
               }}
               className="p-2.5 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-colors cursor-pointer"
@@ -1208,89 +1153,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               </div>
 
-              {/* Separate Secure Configuration: Google Apps Script Backend URL (STRICTLY SUPER ADMIN ONLY) */}
-              {currentUser?.role === 'super_admin' ? (
-                <div className="p-4 rounded-xl bg-slate-950/80 border border-emerald-500/40 space-y-3 relative overflow-hidden shadow-lg">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Shield className="w-4 h-4 text-amber-400" />
-                        <label className="text-amber-300 font-semibold block text-xs">
-                          Google Apps Script Web App Link (صرف سپر ایڈمن کے لیے)
-                        </label>
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                          Super Admin Only
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        یہ لنک انتہائی خفیہ ہے اور سپر ایڈمن کے علاوہ کسی بھی دوسرے صارف، ایڈمن یا ڈیٹا اینٹری آپریٹر کو نظر نہیں آئے گا۔
-                      </p>
-                    </div>
-                    <label className="flex items-center gap-2 cursor-pointer shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={settingsForm.useGoogleAppsScript}
-                        onChange={(e) => setSettingsForm({ ...settingsForm, useGoogleAppsScript: e.target.checked })}
-                        className="rounded text-emerald-600 focus:ring-emerald-500 bg-slate-900 border-slate-700"
-                      />
-                      <span className="text-emerald-400 font-semibold text-xs">فعال کریں (Enable Sync)</span>
-                    </label>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={settingsForm.googleWebAppUrl}
-                      onChange={(e) => setSettingsForm({ ...settingsForm, googleWebAppUrl: e.target.value })}
-                      placeholder="https://script.google.com/macros/s/AKfycb.../exec"
-                      className="flex-1 p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 font-mono text-xs focus:outline-none focus:border-emerald-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleTestGas}
-                      disabled={testingGas || !settingsForm.googleWebAppUrl}
-                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl text-xs shrink-0 disabled:opacity-50 cursor-pointer shadow-md transition-colors"
-                    >
-                      {testingGas ? 'Testing...' : 'Test Link (ٹیسٹ کریں)'}
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setIsScriptModalOpen(true)}
-                      className="px-3 py-1.5 rounded-lg bg-sky-950/80 border border-sky-500/40 hover:bg-sky-900/60 text-sky-300 font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <Code className="w-3.5 h-3.5" />
-                      <span>ایپس اسکرپٹ کا مکمل کوڈ حاصل کریں (View & Copy Apps Script Code)</span>
-                    </button>
-                    <span className="text-[11px] text-slate-400">
-                      کوڈ کو Google Sheet &gt; Extensions &gt; Apps Script میں پیسٹ کریں
-                    </span>
-                  </div>
-
-                  {settingsForm.googleWebAppUrl && settingsForm.googleWebAppUrl.includes('docs.google.com/spreadsheets') && (
-                    <div className="p-2.5 rounded-lg bg-amber-950/70 border border-amber-500/50 text-amber-200 text-xs">
-                      ⚠️ آپ نے گوگل شیٹ کا ایڈٹ لنک درج کیا ہے۔ سسٹم کو کنیکٹ کرنے کے لیے شیٹ کے اندر <strong>Extensions &gt; Apps Script &gt; Deploy &gt; Web App</strong> سے حاصل کردہ <strong>Web app URL</strong> (جو کہ <code>/exec</code> پر ختم ہوتا ہے) درج کریں۔
-                    </div>
-                  )}
-
-                  {gasTestResult && (
-                    <div className={`p-2.5 rounded-lg text-xs ${gasTestResult.success ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/50' : 'bg-rose-950/80 text-rose-300 border border-rose-500/50'}`}>
-                      {gasTestResult.message}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-3.5 rounded-xl bg-slate-950/50 border border-slate-800 flex items-center justify-between text-xs text-slate-400">
-                  <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-slate-500" />
-                    <span>گوگل شیٹ ڈیٹا بیس کنکشن صرف <strong>Super Admin</strong> کنٹرول کر سکتا ہے۔</span>
-                  </div>
-                  <span className="text-[10px] text-slate-500 font-mono bg-slate-900 px-2 py-1 rounded">Hidden for non-super admins</span>
-                </div>
-              )}
-
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-800">
                 <button
                   type="button"
@@ -1320,89 +1182,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           await onRefreshData();
         }}
       />
-
-      {/* Apps Script Code Modal */}
-      {isScriptModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 w-full max-w-4xl max-h-[90vh] rounded-3xl flex flex-col shadow-2xl overflow-hidden">
-            {/* Modal Header */}
-            <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center font-mono">
-                  &lt;/&gt;
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    گوگل ایپس اسکرپٹ مکمل کوڈ (Code.gs)
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    یہ کوڈ اپنی گوگل شیٹ کے Apps Script ایڈیٹر میں پیسٹ کریں اور Deploy کریں۔
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleCopyCode}
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-md transition-colors cursor-pointer"
-                >
-                  {isCodeCopied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{isCodeCopied ? 'کوڈ کاپی ہو گیا! (Copied)' : 'Copy Code (کوڈ کاپی کریں)'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsScriptModalOpen(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Quick deployment guide steps */}
-            <div className="bg-slate-950/90 border-b border-slate-800 p-3 sm:p-4 text-xs text-slate-300 grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-              <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
-                <span className="font-bold text-emerald-400 block mb-0.5">1. شیٹ کھولیں</span>
-                <p className="text-[11px] text-slate-400">Google Sheet میں Extensions &gt; Apps Script کھولیں۔</p>
-              </div>
-              <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
-                <span className="font-bold text-sky-400 block mb-0.5">2. پرانا کوڈ ہٹا کر پیسٹ کریں</span>
-                <p className="text-[11px] text-slate-400">Code.gs کا پرانا سب کچھ ہٹا کر یہ کاپی شدہ کوڈ پیسٹ کریں۔</p>
-              </div>
-              <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
-                <span className="font-bold text-amber-400 block mb-0.5">3. Deploy &gt; Web app</span>
-                <p className="text-[11px] text-slate-400">Execute as: <strong>Me</strong>، Who has access: <strong>Anyone</strong> منتخب کریں۔</p>
-              </div>
-              <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
-                <span className="font-bold text-teal-400 block mb-0.5">4. Web App URL لگائیں</span>
-                <p className="text-[11px] text-slate-400">حاصل کردہ Web App URL (جو /exec پر ختم ہوتا ہے) سیٹنگز میں ڈالیں۔</p>
-              </div>
-            </div>
-
-            {/* Code Box */}
-            <div className="flex-1 overflow-auto p-4 bg-slate-950 font-mono text-xs text-slate-200">
-              <pre className="whitespace-pre overflow-x-auto leading-relaxed select-all">
-                <code>{GOOGLE_APPS_SCRIPT_SOURCE}</code>
-              </pre>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-3 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between">
-              <span className="text-xs text-slate-400">
-                مجموعی لائنز: 600+ | آٹو تصویر ڈرائیو اپلوڈ + ووٹر لسٹ + یوزرز رول سپورٹ
-              </span>
-              <button
-                type="button"
-                onClick={handleCopyCode}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
-              >
-                {isCodeCopied ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
-                <span>{isCodeCopied ? 'کوڈ کاپی ہو گیا! (Copied)' : 'مکمل کوڈ کاپی کریں (Copy Entire Code)'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

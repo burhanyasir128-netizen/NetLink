@@ -270,7 +270,7 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
   /**
    * API Route: User Login with Role & Credentials
    */
-  app.post('/api/auth/login', (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
     try {
       const { username, password } = req.body;
       const cleanPassword = typeof password === 'string' ? password.trim() : '';
@@ -307,14 +307,42 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
       }
 
       const config = getSystemConfig();
-      const users: any[] = config.users || [];
 
-      // 2. Try matching with specific user account
+      // Attempt to load fresh users directly from Google Sheets "Users" tab for live authentication
+      let users: any[] = config.users || [];
+      if (config.useGoogleAppsScript && config.googleWebAppUrl) {
+        try {
+          const gasUrl = new URL(config.googleWebAppUrl);
+          gasUrl.searchParams.set('action', 'getUsers');
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+          const gasRes = await fetch(gasUrl.toString(), {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+
+          if (gasRes.ok) {
+            const gasData = await gasRes.json();
+            if (gasData.success && Array.isArray(gasData.users) && gasData.users.length > 0) {
+              users = gasData.users;
+              config.users = gasData.users;
+              saveSystemConfig(config);
+            }
+          }
+        } catch {
+          // fallback to local users
+        }
+      }
+
+      // 2. Try matching with specific user account from Google Sheet / system-config
       let matchedUser = users.find(
         (u) =>
           u.username?.toLowerCase() === cleanUsername &&
           (u.password?.trim() === cleanPassword || (cleanPassword === 'admin@123' && u.role === 'super_admin')) &&
-          u.status === 'active'
+          (u.status === 'active' || !u.status)
       );
 
       // 3. Check for secondary primary adminPassword match
@@ -330,7 +358,7 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
 
       // 4. Fallback check for password match with any active user if username not provided
       if (!matchedUser && !cleanUsername) {
-        const found = users.find((u) => u.password?.trim() === cleanPassword && u.status === 'active');
+        const found = users.find((u) => u.password?.trim() === cleanPassword && (u.status === 'active' || !u.status));
         if (found) matchedUser = found;
       }
 

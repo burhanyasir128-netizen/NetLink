@@ -406,15 +406,26 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                     تمام صارفین کا ڈیٹا خودکار طور پر گوگل شیٹ کی علیحدہ شیٹ <code className="text-emerald-400 font-mono">"Users"</code> اور سرور میں محفوظ ہوتا ہے۔
                   </p>
                 </div>
-                {isSuperAdmin && (
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={handleOpenAddUser}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-md"
+                    onClick={loadUsers}
+                    disabled={isLoading}
+                    title="گوگل شیٹ سے دوبارہ لوڈ کریں"
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    <UserPlus className="w-4 h-4" />
-                    <span>نیا صارف شامل کریں (Add User)</span>
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-400' : ''}`} />
+                    <span>گوگل شیٹ سے ریفریش (Sync)</span>
                   </button>
-                )}
+                  {isSuperAdmin && (
+                    <button
+                      onClick={handleOpenAddUser}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-md"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>نیا صارف شامل کریں (Add User)</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Roles explanation card */}
