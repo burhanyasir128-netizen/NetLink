@@ -432,7 +432,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-2xl bg-slate-950/70 border border-slate-800 text-[11px]">
                 <div className="space-y-0.5">
                   <span className="font-bold text-amber-300">1. Super Admin:</span>
-                  <p className="text-slate-400">گٹ ہب فائل <code className="text-amber-400 font-mono">super-admin.json</code> سے لائیو، گوگل شیٹ لنک کی تنصیب اور کنفیگریشن کا واحد مجاز</p>
+                  <p className="text-slate-400">گوگل شیٹ کے <code className="text-emerald-400 font-mono">Users</code> ٹیب اور ایڈمن پینل سے مکمل اختیارات کا حامل صارف</p>
                 </div>
                 <div className="space-y-0.5">
                   <span className="font-bold text-sky-300">2. Data Entry:</span>

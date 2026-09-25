@@ -382,17 +382,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   autoFocus
                 />
               </div>
-              <div className="flex flex-col gap-1 text-[11px] text-slate-400 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
-                <div className="flex items-center justify-between">
-                  <span className="text-amber-300 font-semibold flex items-center gap-1">
-                    <Shield className="w-3.5 h-3.5" />
-                    <span>Super Admin (گٹ ہب فائل):</span>
-                  </span>
-                  <span className="font-mono text-emerald-400">superadmin / SuperAdmin@2026!</span>
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  فائل: <code className="text-slate-400 font-mono">super-admin.json</code> (صرف سپر ایڈمن کو گوگل شیٹ لنک کی اجازت ہے)
-                </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Google Sheet Users Synced:</span>
+                </span>
+                <span className="font-mono text-slate-300">Google Sheet کے یوزر اکاؤنٹس یا ایڈمن پاس ورڈ سے لاگ ان کریں</span>
               </div>
             </div>
 

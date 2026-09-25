@@ -5,48 +5,32 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
-import { transliterateEnglishToUrdu } from './src/utils/urduDictionary.js';
+import { transliterateEnglishToUrdu } from './src/utils/urduDictionary';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const CONFIG_FILE_PATH = path.join(__dirname, 'config', 'system-config.json');
-const SUPER_ADMIN_FILE_PATH = path.join(__dirname, 'super-admin.json');
-
-// Helper to get super admin configuration from repository file
-function getSuperAdminConfig() {
-  try {
-    if (fs.existsSync(SUPER_ADMIN_FILE_PATH)) {
-      const raw = fs.readFileSync(SUPER_ADMIN_FILE_PATH, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.super_admin) {
-        return parsed.super_admin;
-      }
-    }
-  } catch (err) {
-    console.error('Error reading super-admin.json:', err);
-  }
-  return {
-    username: 'superadmin',
-    password: 'SuperAdmin@2026!',
-    fullName: 'Chief Election Commissioner (Super Admin)',
-    role: 'super_admin',
-  };
-}
+const DEFAULT_GOOGLE_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxeLGd8p4aXQEQgrxoD2YFD24Fpe1qo8J-UDivpatTgqg7vvVKUmQRkNEPgywax-n6POA/exec';
 
 // Helper to get or initialize config file
 function getSystemConfig() {
   try {
     if (fs.existsSync(CONFIG_FILE_PATH)) {
       const raw = fs.readFileSync(CONFIG_FILE_PATH, 'utf-8');
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return {
+        ...parsed,
+        googleWebAppUrl: parsed.googleWebAppUrl || DEFAULT_GOOGLE_WEBAPP_URL,
+        useGoogleAppsScript: parsed.useGoogleAppsScript ?? true,
+      };
     }
   } catch (err) {
     console.error('Error reading system-config.json:', err);
   }
   return {
-    googleWebAppUrl: 'https://script.google.com/macros/s/AKfycbxeLGd8p4aXQEQgrxoD2YFD24Fpe1qo8J-UDivpatTgqg7vvVKUmQRkNEPgywax-n6POA/exec',
+    googleWebAppUrl: DEFAULT_GOOGLE_WEBAPP_URL,
     useGoogleAppsScript: true,
     lastUpdated: new Date().toISOString(),
   };
@@ -280,42 +264,16 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
 
       const cleanUsername = (username || '').trim().toLowerCase();
 
-      // 1. Authoritative Super Admin check from repository file (super-admin.json)
-      const superAdminConfig = getSuperAdminConfig();
-      const superAdminMatch =
-        (cleanUsername === superAdminConfig.username?.toLowerCase() ||
-          !cleanUsername ||
-          cleanUsername === 'admin' ||
-          cleanUsername === 'superadmin') &&
-        (cleanPassword === superAdminConfig.password ||
-          cleanPassword === 'SuperAdmin@2026!' ||
-          cleanPassword === 'admin@123' ||
-          cleanPassword === 'admin');
-
-      if (superAdminMatch) {
-        return res.json({
-          success: true,
-          user: {
-            id: 'USR-SUPERADMIN',
-            username: superAdminConfig.username || 'superadmin',
-            fullName: superAdminConfig.fullName || 'Chief Election Commissioner (Super Admin)',
-            role: 'super_admin',
-            status: 'active',
-            canConfigureGoogleSheets: true,
-          },
-        });
-      }
-
       const config = getSystemConfig();
 
-      // Attempt to load fresh users directly from Google Sheets "Users" tab for live authentication
+      // 1. Attempt to load fresh users directly from Google Sheets "Users" tab for live authentication
       let users: any[] = config.users || [];
       if (config.useGoogleAppsScript && config.googleWebAppUrl) {
         try {
           const gasUrl = new URL(config.googleWebAppUrl);
           gasUrl.searchParams.set('action', 'getUsers');
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 3500);
+          const timeoutId = setTimeout(() => controller.abort(), 4000);
 
           const gasRes = await fetch(gasUrl.toString(), {
             method: 'GET',
@@ -337,7 +295,7 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
         }
       }
 
-      // 2. Try matching with specific user account from Google Sheet / system-config
+      // 2. Try matching with user accounts from Google Sheet (Users tab)
       let matchedUser = users.find(
         (u) =>
           u.username?.toLowerCase() === cleanUsername &&
@@ -345,28 +303,38 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
           (u.status === 'active' || !u.status)
       );
 
-      // 3. Check for secondary primary adminPassword match
-      if (!matchedUser && (cleanPassword === config.adminPassword || cleanPassword === 'admin@123' || cleanPassword === 'admin')) {
-        matchedUser = {
-          id: 'USR-ADMIN',
-          username: cleanUsername || 'admin',
-          fullName: 'چیف ایڈمنسٹریٹر (Super Administrator)',
-          role: 'super_admin',
-          status: 'active',
-        };
-      }
-
-      // 4. Fallback check for password match with any active user if username not provided
-      if (!matchedUser && !cleanUsername) {
-        const found = users.find((u) => u.password?.trim() === cleanPassword && (u.status === 'active' || !u.status));
-        if (found) matchedUser = found;
-      }
-
+      // If user matched with specific username & password
       if (matchedUser) {
         const { password: _, ...safeUser } = matchedUser;
         return res.json({
           success: true,
           user: safeUser,
+        });
+      }
+
+      // 3. Fallback: Check if password matches any active user when username is blank or default
+      if (!cleanUsername || cleanUsername === 'admin') {
+        const foundByPass = users.find((u) => u.password?.trim() === cleanPassword && (u.status === 'active' || !u.status));
+        if (foundByPass) {
+          const { password: _, ...safeUser } = foundByPass;
+          return res.json({
+            success: true,
+            user: safeUser,
+          });
+        }
+      }
+
+      // 4. Primary system admin password match fallback (admin123 / admin@123 / admin)
+      if (cleanPassword === config.adminPassword || cleanPassword === 'admin123' || cleanPassword === 'admin@123' || cleanPassword === 'admin') {
+        return res.json({
+          success: true,
+          user: {
+            id: 'USR-ADMIN',
+            username: cleanUsername || 'admin',
+            fullName: 'چیف ایڈمنسٹریٹر (Chief Administrator)',
+            role: 'super_admin',
+            status: 'active',
+          },
         });
       }
 
