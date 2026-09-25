@@ -42,7 +42,6 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
 }) => {
   const [formImage, setFormImage] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [scanMode, setScanMode] = useState<'offline' | 'ai'>('offline'); // Default offline (Bina API k scan)
   const [scanResult, setScanResult] = useState<ScannedFormData | null>(null);
   const [existingRecord, setExistingRecord] = useState<Voter | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
@@ -107,7 +106,7 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
         const compressed = await compressImage(blob, 1200, 1200, 0.9);
         setFormImage(compressed.base64);
         stopDocumentCamera();
-        runScanProcess(compressed.base64, scanMode);
+        runScanProcess(compressed.base64);
       }, 'image/jpeg', 0.9);
     } catch (err: any) {
       setErrorMessage('Error capturing document: ' + err.message);
@@ -125,14 +124,14 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
     try {
       const compressed = await compressImage(file, 1200, 1200, 0.9);
       setFormImage(compressed.base64);
-      runScanProcess(compressed.base64, scanMode);
+      runScanProcess(compressed.base64);
     } catch (err: any) {
       setErrorMessage('Failed to read image: ' + err.message);
     }
   };
 
-  // Run Scan Process (Supports Offline / Bina API as well as AI mode)
-  const runScanProcess = async (base64Img: string, mode: 'offline' | 'ai') => {
+  // Run Scan Process (100% Instant Offline Scan)
+  const runScanProcess = async (base64Img: string) => {
     setIsScanning(true);
     setErrorMessage(null);
     setInfoMessage(null);
@@ -140,23 +139,8 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
     setExistingRecord(null);
 
     try {
-      let data: ScannedFormData;
-
-      if (mode === 'offline') {
-        // 100% Offline Client Scan (Bina kisi API k)
-        data = await scanDocumentOffline(base64Img);
-        setInfoMessage('تصویر بغیر کسی API کے فوری سکین ہو چکی ہے۔ آپ تفصیلات کی جانچ کر سکتے ہیں۔');
-      } else {
-        // Online Gemini Multimodal AI
-        const res = await AiService.scanManualForm(base64Img);
-        if (res.success && res.data) {
-          data = res.data;
-        } else {
-          // Fallback to offline scan gracefully
-          data = await scanDocumentOffline(base64Img);
-          setInfoMessage('آن لائن سروس کے بجائے آف لائن موڈ سے سکین کر دیا گیا ہے۔');
-        }
-      }
+      const data = await scanDocumentOffline(base64Img);
+      setInfoMessage('تصویر بغیر کسی API کے فوری سکین ہو چکی ہے۔ آپ تفصیلات کی جانچ کر سکتے ہیں۔');
 
       setScanResult(data);
       setEditFullName(data.fullNameUrdu || data.fullName || 'محمد سلیم خان');
@@ -278,46 +262,6 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
-          {/* Mode Switcher: Offline (No API) vs AI Mode */}
-          <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 font-medium">سکین موڈ (Scan Mode):</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setScanMode('offline');
-                  if (formImage) runScanProcess(formImage, 'offline');
-                }}
-                className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
-                  scanMode === 'offline'
-                    ? 'bg-emerald-600 text-white shadow-md'
-                    : 'bg-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                <Zap className="w-3.5 h-3.5 text-amber-300" />
-                <span>بغیر API کے سکین (Instant Offline)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setScanMode('ai');
-                  if (formImage) runScanProcess(formImage, 'ai');
-                }}
-                className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
-                  scanMode === 'ai'
-                    ? 'bg-purple-600 text-white shadow-md'
-                    : 'bg-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5 text-purple-300" />
-                <span>AI Vision OCR (آن لائن)</span>
-              </button>
-            </div>
-          </div>
-
           {errorMessage && (
             <div className="p-3.5 rounded-xl bg-rose-950/50 border border-rose-500/50 text-rose-300 text-xs flex items-start justify-between gap-2.5">
               <div className="flex items-start gap-2.5 flex-1">
@@ -327,7 +271,7 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
               {formImage && (
                 <button
                   type="button"
-                  onClick={() => runScanProcess(formImage, 'offline')}
+                  onClick={() => runScanProcess(formImage)}
                   disabled={isScanning}
                   className="px-3 py-1 bg-rose-900/60 hover:bg-rose-800 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
                 >

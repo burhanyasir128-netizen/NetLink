@@ -384,48 +384,7 @@ export class ApiService {
       return { success: false, error: `Mobile number is already registered${dup.existingVoterName ? ` to ${dup.existingVoterName}` : ''}.` };
     }
 
-    if (config.useGoogleAppsScript) {
-      try {
-        const res = await fetch('/api/gas-proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'register',
-            ...voterData,
-          }),
-        });
-
-        if (res.ok) {
-          const text = await res.text();
-          if (text && !text.trim().startsWith('<')) {
-            try {
-              const data = JSON.parse(text);
-              if (data.success) {
-                const newVoter: Voter = {
-                  id: data.serialNumber || `UB-${Date.now().toString().slice(-4)}`,
-                  serialNumber: data.serialNumber || `UB-${Date.now().toString().slice(-4)}`,
-                  ...voterData,
-                  photoUrl: data.photoUrl || voterData.photoUrl,
-                  registrationDate: new Date().toISOString(),
-                  status: voterData.status || 'Verified',
-                };
-                const current = getStoredVoters();
-                saveStoredVoters([newVoter, ...current]);
-                return { success: true, voter: newVoter };
-              } else {
-                return { success: false, error: data.error || 'Server error occurred' };
-              }
-            } catch {
-              // fallback to local creation below
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Google Apps Script proxy register failed, falling back to local creation', err);
-      }
-    }
-
-    // Local DB Insertion
+    // Local DB Insertion first (ensures 100% reliable saving)
     const current = getStoredVoters();
     const nextNum = 1001 + current.length;
     const serial = `UB-${nextNum}`;
@@ -439,6 +398,21 @@ export class ApiService {
     };
 
     saveStoredVoters([newVoter, ...current]);
+
+    // Attempt to sync to Google Apps Script if enabled (in background, non-blocking)
+    if (config.useGoogleAppsScript && config.googleWebAppUrl) {
+      fetch('/api/gas-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'register',
+          ...newVoter,
+        }),
+      }).catch((err) => {
+        console.warn('Google Apps Script background sync failed:', err);
+      });
+    }
+
     return { success: true, voter: newVoter };
   }
 
