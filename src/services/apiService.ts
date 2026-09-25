@@ -399,18 +399,36 @@ export class ApiService {
 
     saveStoredVoters([newVoter, ...current]);
 
-    // Attempt to sync to Google Apps Script if enabled (in background, non-blocking)
+    // Attempt to sync to Google Apps Script if enabled (awaited with timeout for mobile/browser reliability)
     if (config.useGoogleAppsScript && config.googleWebAppUrl) {
-      fetch('/api/gas-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'register',
-          ...newVoter,
-        }),
-      }).catch((err) => {
-        console.warn('Google Apps Script background sync failed:', err);
-      });
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+        const res = await fetch('/api/gas-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'register',
+            ...newVoter,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.serialNumber) {
+            newVoter.serialNumber = data.serialNumber;
+            newVoter.id = data.serialNumber;
+            // update stored voters with GAS serial number if assigned
+            const updatedList = getStoredVoters().map((v) => (v.serialNumber === serial ? newVoter : v));
+            saveStoredVoters(updatedList);
+          }
+        }
+      } catch (err) {
+        console.warn('Google Apps Script sync failed or timed out, saved locally:', err);
+      }
     }
 
     return { success: true, voter: newVoter };
