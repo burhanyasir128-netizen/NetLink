@@ -11,13 +11,17 @@ import {
   Languages,
   Check,
   RefreshCw,
-  Eye,
+  Search,
+  UserCheck,
+  Zap,
 } from 'lucide-react';
 import { compressImage } from '../services/imageCompression';
 import { AiService, ScannedFormData } from '../services/aiService';
 import { ApiService } from '../services/apiService';
 import { Voter } from '../types';
 import { formatCnic, formatMobile } from '../utils/formatters';
+import { scanDocumentOffline } from '../utils/offlineOcr';
+import { transliterateEnglishToUrdu } from '../utils/urduDictionary';
 
 interface ScanFormModalProps {
   isOpen: boolean;
@@ -38,11 +42,20 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
 }) => {
   const [formImage, setFormImage] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanMode, setScanMode] = useState<'offline' | 'ai'>('offline'); // Default offline (Bina API k scan)
   const [scanResult, setScanResult] = useState<ScannedFormData | null>(null);
   const [existingRecord, setExistingRecord] = useState<Voter | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [selectedLanguageMode, setSelectedLanguageMode] = useState<'urdu' | 'english' | 'bilingual'>('urdu');
+
+  // Manual fast-fill inputs for document review
+  const [editFullName, setEditFullName] = useState('');
+  const [editFirmName, setEditFirmName] = useState('');
+  const [editCnic, setEditCnic] = useState('');
+  const [editMobile, setEditMobile] = useState('');
+  const [editAddress, setEditAddress] = useState('');
 
   // Camera capture inside modal
   const [isCapturingLive, setIsCapturingLive] = useState(false);
@@ -94,7 +107,7 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
         const compressed = await compressImage(blob, 1200, 1200, 0.9);
         setFormImage(compressed.base64);
         stopDocumentCamera();
-        runOcrScan(compressed.base64);
+        runScanProcess(compressed.base64, scanMode);
       }, 'image/jpeg', 0.9);
     } catch (err: any) {
       setErrorMessage('Error capturing document: ' + err.message);
@@ -112,48 +125,86 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
     try {
       const compressed = await compressImage(file, 1200, 1200, 0.9);
       setFormImage(compressed.base64);
-      runOcrScan(compressed.base64);
+      runScanProcess(compressed.base64, scanMode);
     } catch (err: any) {
       setErrorMessage('Failed to read image: ' + err.message);
     }
   };
 
-  // Execute AI OCR Scan
-  const runOcrScan = async (base64Img: string) => {
+  // Run Scan Process (Supports Offline / Bina API as well as AI mode)
+  const runScanProcess = async (base64Img: string, mode: 'offline' | 'ai') => {
     setIsScanning(true);
     setErrorMessage(null);
+    setInfoMessage(null);
     setScanResult(null);
     setExistingRecord(null);
 
     try {
-      const res = await AiService.scanManualForm(base64Img);
-      if (res.success && res.data) {
-        setScanResult(res.data);
+      let data: ScannedFormData;
 
-        // Check if voter already exists in database/sheet by CNIC or Mobile
-        const scannedCnic = res.data.cnic || '';
-        const scannedMobile = res.data.mobile || '';
-
-        if (scannedCnic || scannedMobile) {
-          setIsCheckingDuplicate(true);
-          try {
-            const existing = await ApiService.findExistingVoter(scannedCnic, scannedMobile);
-            if (existing) {
-              setExistingRecord(existing);
-            }
-          } catch (e) {
-            console.warn('Failed checking existing voter in scan modal:', e);
-          } finally {
-            setIsCheckingDuplicate(false);
-          }
-        }
+      if (mode === 'offline') {
+        // 100% Offline Client Scan (Bina kisi API k)
+        data = await scanDocumentOffline(base64Img);
+        setInfoMessage('تصویر بغیر کسی API کے فوری سکین ہو چکی ہے۔ آپ تفصیلات کی جانچ کر سکتے ہیں۔');
       } else {
-        setErrorMessage(res.error || 'Could not detect voter details. Please ensure form text is clear.');
+        // Online Gemini Multimodal AI
+        const res = await AiService.scanManualForm(base64Img);
+        if (res.success && res.data) {
+          data = res.data;
+        } else {
+          // Fallback to offline scan gracefully
+          data = await scanDocumentOffline(base64Img);
+          setInfoMessage('آن لائن سروس کے بجائے آف لائن موڈ سے سکین کر دیا گیا ہے۔');
+        }
+      }
+
+      setScanResult(data);
+      setEditFullName(data.fullNameUrdu || data.fullName || '');
+      setEditFirmName(data.firmNameUrdu || data.firmName || '');
+      setEditCnic(formatCnic(data.cnic || ''));
+      setEditMobile(formatMobile(data.mobile || ''));
+      setEditAddress(data.addressUrdu || data.address || '');
+
+      // Check if voter already exists in database/sheet by CNIC or Mobile
+      const scannedCnic = data.cnic || '';
+      const scannedMobile = data.mobile || '';
+
+      if (scannedCnic || scannedMobile) {
+        setIsCheckingDuplicate(true);
+        try {
+          const existing = await ApiService.findExistingVoter(scannedCnic, scannedMobile);
+          if (existing) {
+            setExistingRecord(existing);
+          }
+        } catch (e) {
+          console.warn('Failed checking existing voter in scan modal:', e);
+        } finally {
+          setIsCheckingDuplicate(false);
+        }
       }
     } catch (err: any) {
-      setErrorMessage('Scanning service error: ' + err.message);
+      setErrorMessage('Scanning error: ' + err.message);
     } finally {
       setIsScanning(false);
+    }
+  };
+
+  // Instant Check Existing Record by manual search if user types CNIC or Mobile
+  const handleCheckCnicOrMobile = async (cnicVal: string, mobileVal: string) => {
+    if ((cnicVal && cnicVal.length >= 10) || (mobileVal && mobileVal.length >= 10)) {
+      setIsCheckingDuplicate(true);
+      try {
+        const found = await ApiService.findExistingVoter(cnicVal, mobileVal);
+        if (found) {
+          setExistingRecord(found);
+        } else {
+          setExistingRecord(null);
+        }
+      } catch (err) {
+        console.warn('Error checking voter:', err);
+      } finally {
+        setIsCheckingDuplicate(false);
+      }
     }
   };
 
@@ -171,55 +222,17 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
     onClose();
   };
 
-  // Prepare final values based on chosen language preference (Urdu vs English vs Bilingual)
-  const getPreparedValues = () => {
-    if (!scanResult) return null;
-
-    let fullName = scanResult.fullName || '';
-    let firmName = scanResult.firmName || '';
-    let address = scanResult.address || '';
-
-    if (selectedLanguageMode === 'urdu') {
-      fullName = scanResult.fullNameUrdu || scanResult.fullName || '';
-      firmName = scanResult.firmNameUrdu || scanResult.firmName || '';
-      address = scanResult.addressUrdu || scanResult.address || '';
-    } else if (selectedLanguageMode === 'english') {
-      fullName = scanResult.fullName || scanResult.fullNameUrdu || '';
-      firmName = scanResult.firmName || scanResult.firmNameUrdu || '';
-      address = scanResult.address || scanResult.addressUrdu || '';
-    } else if (selectedLanguageMode === 'bilingual') {
-      // e.g. "Muhammad Bilal (محمد بلال)"
-      if (scanResult.fullName && scanResult.fullNameUrdu && scanResult.fullName !== scanResult.fullNameUrdu) {
-        fullName = `${scanResult.fullName} (${scanResult.fullNameUrdu})`;
-      } else {
-        fullName = scanResult.fullNameUrdu || scanResult.fullName || '';
-      }
-
-      if (scanResult.firmName && scanResult.firmNameUrdu && scanResult.firmName !== scanResult.firmNameUrdu) {
-        firmName = `${scanResult.firmName} (${scanResult.firmNameUrdu})`;
-      } else {
-        firmName = scanResult.firmNameUrdu || scanResult.firmName || '';
-      }
-
-      address = scanResult.addressUrdu || scanResult.address || '';
-    }
-
-    return {
-      fullName,
-      firmName,
-      cnic: formatCnic(scanResult.cnic || ''),
-      mobile: formatMobile(scanResult.mobile || ''),
-      address,
-    };
-  };
-
+  // Prepare final values
   const handleApply = () => {
-    const prepared = getPreparedValues();
-    if (prepared) {
-      onApplyData(prepared);
-      stopDocumentCamera();
-      onClose();
-    }
+    onApplyData({
+      fullName: editFullName.trim(),
+      firmName: editFirmName.trim(),
+      cnic: formatCnic(editCnic),
+      mobile: formatMobile(editMobile),
+      address: editAddress.trim(),
+    });
+    stopDocumentCamera();
+    onClose();
   };
 
   return (
@@ -229,15 +242,15 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
-              <Sparkles className="w-5 h-5 text-emerald-400" />
+              <Zap className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
               <h3 className="font-heading font-semibold text-slate-100 text-base flex items-center gap-2">
-                <span>AI Manual Form Scanner & Auto-Fill</span>
+                <span>Manual Form Scanner & Auto-Fill</span>
                 <span className="font-urdu text-emerald-400 text-sm font-normal">دستی فارم سکینر</span>
               </h3>
               <p className="text-xs text-slate-400">
-                Upload or capture a photo of the paper form/slip to automatically extract and translate fields.
+                بغیر کسی API کے آف لائن فوری سکین کریں یا سابقہ ووٹر ریکارڈ تلاش کریں۔
               </p>
             </div>
           </div>
@@ -254,6 +267,46 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
+          {/* Mode Switcher: Offline (No API) vs AI Mode */}
+          <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 font-medium">سکین موڈ (Scan Mode):</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setScanMode('offline');
+                  if (formImage) runScanProcess(formImage, 'offline');
+                }}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+                  scanMode === 'offline'
+                    ? 'bg-emerald-600 text-white shadow-md'
+                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-300" />
+                <span>بغیر API کے سکین (Instant Offline)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setScanMode('ai');
+                  if (formImage) runScanProcess(formImage, 'ai');
+                }}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+                  scanMode === 'ai'
+                    ? 'bg-purple-600 text-white shadow-md'
+                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+                <span>AI Vision OCR (آن لائن)</span>
+              </button>
+            </div>
+          </div>
+
           {errorMessage && (
             <div className="p-3.5 rounded-xl bg-rose-950/50 border border-rose-500/50 text-rose-300 text-xs flex items-start justify-between gap-2.5">
               <div className="flex items-start gap-2.5 flex-1">
@@ -263,14 +316,21 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
               {formImage && (
                 <button
                   type="button"
-                  onClick={() => runOcrScan(formImage)}
+                  onClick={() => runScanProcess(formImage, 'offline')}
                   disabled={isScanning}
                   className="px-3 py-1 bg-rose-900/60 hover:bg-rose-800 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
-                  <span>Retry Scan</span>
+                  <span>بغیر API دوبارہ کوشش</span>
                 </button>
               )}
+            </div>
+          )}
+
+          {infoMessage && (
+            <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{infoMessage}</span>
             </div>
           )}
 
@@ -312,10 +372,10 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
 
               <div className="space-y-1">
                 <h4 className="text-sm font-semibold text-slate-200">
-                  Select or Capture Manual Form / Registration Slip
+                  فارم یا رسید کی تصویر منتخب کریں (بغیر کسی API کے فوری سکین)
                 </h4>
                 <p className="text-xs text-slate-400 max-w-md mx-auto">
-                  Take a clear photo of the handwritten or printed voter form, token, or CNIC.
+                  دستی فارم، شناختی کارڈ یا ووٹر پرچی کی تصویر لیں تاکہ معلومات فوری لوڈ ہو جائیں۔
                 </p>
               </div>
 
@@ -326,7 +386,7 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
                   className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl flex items-center gap-2 shadow-md shadow-emerald-950 transition-all cursor-pointer"
                 >
                   <Camera className="w-4 h-4" />
-                  <span>Use Camera to Shoot Form</span>
+                  <span>کیمرہ سے تصویر لیں (Shoot Form)</span>
                 </button>
 
                 <span className="text-xs text-slate-500">or</span>
@@ -337,111 +397,63 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
                   className="px-4 py-2.5 border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <UploadCloud className="w-4 h-4 text-sky-400" />
-                  <span>Upload Form Image</span>
+                  <span>تصویر اپلوڈ کریں (Upload Image)</span>
                 </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileUpload(file);
+                  }}
+                />
               </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    handleFileUpload(e.target.files[0]);
-                  }
-                }}
-              />
             </div>
           ) : (
-            /* Image Preview & Scanning Status */
-            <div className="space-y-4">
+            /* Document Preview & Re-scan Controls */
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">Scanned Document:</span>
-                  <span className="text-xs text-emerald-400 font-medium">Image Loaded</span>
-                </div>
+                <span className="text-xs font-semibold text-slate-300">سکین شدہ تصویر (Scanned Document)</span>
                 <button
                   type="button"
                   onClick={() => {
                     setFormImage(null);
                     setScanResult(null);
+                    setExistingRecord(null);
+                    setErrorMessage(null);
+                    setInfoMessage(null);
                   }}
-                  className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
+                  className="text-xs text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Scan Another Document
+                  دوسری تصویر لگائیں (Scan Another Document)
                 </button>
               </div>
 
-              <div className="relative max-h-48 w-full bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
-                <img src={formImage} alt="Document" className="max-h-48 w-auto object-contain" />
+              <div className="relative max-h-44 w-full bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+                <img src={formImage} alt="Document" className="max-h-44 w-auto object-contain" />
                 {isScanning && (
                   <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center gap-2 text-slate-200 text-xs">
                     <Loader2 className="w-6 h-6 text-emerald-400 animate-spin" />
                     <span className="font-semibold text-emerald-300">
-                      Gemini Multimodal AI is extracting details...
+                      دستاویز کی معلومات لوڈ کی جا رہی ہیں...
                     </span>
-                    <span className="font-urdu text-slate-400">دستی فارم سے معلومات حاصل کی جا رہی ہیں</span>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Scanned Results & Language Mode Switch */}
-          {scanResult && (
-            <div className="space-y-4 p-5 rounded-2xl bg-slate-950/70 border border-emerald-500/30">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                  <span className="text-sm font-semibold text-white">Extracted Form Fields</span>
-                </div>
-
-                {/* Language Preference Segmented Control */}
-                <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedLanguageMode('urdu')}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                      selectedLanguageMode === 'urdu'
-                        ? 'bg-emerald-600 text-white font-urdu'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Languages className="w-3 h-3" />
-                    <span>اردو میں محفوظ کریں</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedLanguageMode('english')}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                      selectedLanguageMode === 'english'
-                        ? 'bg-emerald-600 text-white'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    English
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedLanguageMode('bilingual')}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                      selectedLanguageMode === 'bilingual'
-                        ? 'bg-emerald-600 text-white'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Both (دونوں)
-                  </button>
-                </div>
-              </div>
-
+          {/* Quick Existing Record Lookup & Detection */}
+          {formImage && (
+            <div className="space-y-4">
               {/* Existing Record Notice (If CNIC or Mobile already registered) */}
               {isCheckingDuplicate && (
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
-                  <span>Checking database for existing registered voter record... (ووٹر ریکارڈ کی جانچ ہو رہی ہے)</span>
+                  <span>ووٹر لسٹ اور ڈیٹا بیس سے ریکارڈ تلاش کیا جا رہا ہے...</span>
                 </div>
               )}
 
@@ -452,13 +464,13 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
                       <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
                       <div>
                         <h4 className="font-semibold text-white text-sm flex items-center gap-2">
-                          <span>یہ ووٹر پہلے سے رجسٹرڈ ہے! (Record Already Exists)</span>
+                          <span>یہ ووٹر پہلے سے لسٹ میں رجسٹرڈ ہے!</span>
                           <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-900/60 text-amber-300 border border-amber-600/40">
                             {existingRecord.serialNumber}
                           </span>
                         </h4>
                         <p className="text-amber-300/90 text-xs mt-1">
-                          سکین کیے گئے شناختی کارڈ یا موبائل نمبر سے ریکارڈ مل گیا ہے۔
+                          اس کارڈ/موبائل پر سابقہ ووٹر ریکارڈ مل گیا ہے۔ آپ براہ راست یہ تفصیلات فارم میں ڈال سکتے ہیں۔
                         </p>
                       </div>
                     </div>
@@ -468,7 +480,7 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
                       onClick={handleApplyExistingRecord}
                       className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow transition-colors shrink-0 cursor-pointer"
                     >
-                      موجودہ ریکارڈ لوڈ کریں (Use Existing Data)
+                      موجودہ ریکارڈ فارم میں ڈالیں
                     </button>
                   </div>
 
@@ -493,64 +505,100 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
                 </div>
               )}
 
-              {/* Data Preview Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <span className="text-slate-400 block mb-0.5">Full Name (بنام ووٹر):</span>
-                  <p className="font-semibold text-slate-100 text-sm">
-                    {selectedLanguageMode === 'urdu'
-                      ? scanResult.fullNameUrdu || scanResult.fullName
-                      : selectedLanguageMode === 'english'
-                      ? scanResult.fullName
-                      : `${scanResult.fullName || ''} (${scanResult.fullNameUrdu || ''})`}
-                  </p>
-                  {scanResult.fullNameUrdu && selectedLanguageMode !== 'urdu' && (
-                    <p className="text-[11px] font-urdu text-emerald-400">{scanResult.fullNameUrdu}</p>
-                  )}
+              {/* Data Review and Direct Editable Fields */}
+              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                    <UserCheck className="w-4 h-4 text-emerald-400" />
+                    <span>سکین شدہ معلومات (تصویر دیکھ کر تصدیق کریں)</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400">ضرورت پڑنے پر تبدیلی کریں</span>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <span className="text-slate-400 block mb-0.5">Firm / Shop Name (نام فرم):</span>
-                  <p className="font-semibold text-emerald-300 text-sm">
-                    {selectedLanguageMode === 'urdu'
-                      ? scanResult.firmNameUrdu || scanResult.firmName
-                      : selectedLanguageMode === 'english'
-                      ? scanResult.firmName
-                      : `${scanResult.firmName || ''} (${scanResult.firmNameUrdu || ''})`}
-                  </p>
-                  {scanResult.firmNameUrdu && selectedLanguageMode !== 'urdu' && (
-                    <p className="text-[11px] font-urdu text-emerald-400">{scanResult.firmNameUrdu}</p>
-                  )}
-                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="text-slate-400 block mb-1">بنام ووٹر (Full Name):</label>
+                    <input
+                      type="text"
+                      value={editFullName}
+                      onChange={(e) => setEditFullName(e.target.value)}
+                      placeholder="محمد عابد حسین"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-urdu text-sm focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
 
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <span className="text-slate-400 block mb-0.5">CNIC Number:</span>
-                  <p className="font-mono font-bold text-slate-100">{formatCnic(scanResult.cnic || '')}</p>
-                </div>
+                  <div>
+                    <label className="text-slate-400 block mb-1">نام فرم / دکان (Firm Name):</label>
+                    <input
+                      type="text"
+                      value={editFirmName}
+                      onChange={(e) => setEditFirmName(e.target.value)}
+                      placeholder="الرحمن ٹریڈرز"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-emerald-300 font-urdu text-sm focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
 
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <span className="text-slate-400 block mb-0.5">Mobile Number:</span>
-                  <p className="font-mono font-bold text-slate-100">{formatMobile(scanResult.mobile || '')}</p>
-                </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-slate-400">شناختی کارڈ نمبر (CNIC):</label>
+                      <button
+                        type="button"
+                        onClick={() => handleCheckCnicOrMobile(editCnic, editMobile)}
+                        className="text-[10px] text-emerald-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <Search className="w-3 h-3" />
+                        <span>لسٹ میں چیک کریں</span>
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={editCnic}
+                      onChange={(e) => {
+                        const val = formatCnic(e.target.value);
+                        setEditCnic(val);
+                        handleCheckCnicOrMobile(val, editMobile);
+                      }}
+                      placeholder="35201-1234567-1"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
 
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 sm:col-span-2">
-                  <span className="text-slate-400 block mb-0.5">Complete Address (مکمل پتہ):</span>
-                  <p className="text-slate-200">
-                    {selectedLanguageMode === 'urdu'
-                      ? scanResult.addressUrdu || scanResult.address
-                      : scanResult.address}
-                  </p>
-                  {scanResult.addressUrdu && selectedLanguageMode !== 'urdu' && (
-                    <p className="text-[11px] font-urdu text-emerald-400 mt-0.5">{scanResult.addressUrdu}</p>
-                  )}
-                </div>
-              </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-slate-400">موبائل فون (Mobile):</label>
+                      <button
+                        type="button"
+                        onClick={() => handleCheckCnicOrMobile(editCnic, editMobile)}
+                        className="text-[10px] text-emerald-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <Search className="w-3 h-3" />
+                        <span>لسٹ میں چیک کریں</span>
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={editMobile}
+                      onChange={(e) => {
+                        const val = formatMobile(e.target.value);
+                        setEditMobile(val);
+                        handleCheckCnicOrMobile(editCnic, val);
+                      }}
+                      placeholder="0300-1234567"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
 
-              <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-900/60 text-xs text-emerald-300 flex items-center gap-2">
-                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>
-                  Clicking "Apply to Form" will fill these fields. Next, you can snap the voter's live photo and submit!
-                </span>
+                  <div className="sm:col-span-2">
+                    <label className="text-slate-400 block mb-1">مکمل پتہ (Complete Address):</label>
+                    <input
+                      type="text"
+                      value={editAddress}
+                      onChange={(e) => setEditAddress(e.target.value)}
+                      placeholder="دکان نمبر 12، اردو بازار، لاہور"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 font-urdu text-sm focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -564,12 +612,12 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
               stopDocumentCamera();
               onClose();
             }}
-            className="px-4 py-2 border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl"
+            className="px-4 py-2 border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl cursor-pointer"
           >
             Cancel
           </button>
 
-          {scanResult && (
+          {formImage && (
             <button
               type="button"
               onClick={handleApply}
