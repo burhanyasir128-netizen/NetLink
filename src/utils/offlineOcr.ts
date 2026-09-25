@@ -135,30 +135,30 @@ function extractHeuristicDocumentData(
   _ctx: CanvasRenderingContext2D
 ): ScannedFormData {
   return {
-    fullName: 'Muhammad Saleem Khan',
-    fullNameUrdu: 'محمد سلیم خان',
-    firmName: 'Al-Rehman Traders',
-    firmNameUrdu: 'الرحمن ٹریڈرز',
-    cnic: '32101-7654321-9',
-    mobile: '0300-1234567',
-    address: 'Shop No 12, Urdu Bazar Lahore',
-    addressUrdu: 'دکان نمبر 12، اردو بازار، لاہور',
-    confidence: 'High',
-    notes: 'Urdu Bazar Lahore Voter Form scanned successfully.',
+    fullName: '',
+    fullNameUrdu: '',
+    firmName: '',
+    firmNameUrdu: '',
+    cnic: '',
+    mobile: '',
+    address: '',
+    addressUrdu: '',
+    confidence: 'Low',
+    notes: 'No automated barcode or QR detected. Please enter details manually or use AI OCR.',
   };
 }
 
 function getFallbackData(reason?: string): ScannedFormData {
   return {
-    fullName: 'Muhammad Saleem Khan',
-    fullNameUrdu: 'محمد سلیم خان',
-    firmName: 'Al-Rehman Traders',
-    firmNameUrdu: 'الرحمن ٹریڈرز',
-    cnic: '32101-7654321-9',
-    mobile: '0300-1234567',
-    address: 'Shop No 12, Urdu Bazar Lahore',
-    addressUrdu: 'دکان نمبر 12، اردو بازار، لاہور',
+    fullName: '',
+    fullNameUrdu: '',
+    firmName: '',
+    firmNameUrdu: '',
+    cnic: '',
+    mobile: '',
+    address: '',
+    addressUrdu: '',
     confidence: 'Low',
-    notes: reason || 'Offline scan mode fallback for voter form',
+    notes: reason || 'Offline scan fallback',
   };
 }

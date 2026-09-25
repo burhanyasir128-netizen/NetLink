@@ -130,7 +130,7 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
     }
   };
 
-  // Run Scan Process (100% Instant Offline Scan)
+  // Run Scan Process (Gemini Vision Multimodal OCR with offline fallback)
   const runScanProcess = async (base64Img: string) => {
     setIsScanning(true);
     setErrorMessage(null);
@@ -139,35 +139,60 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
     setExistingRecord(null);
 
     try {
-      const data = await scanDocumentOffline(base64Img);
-      setInfoMessage('تصویر بغیر کسی API کے فوری سکین ہو چکی ہے۔ آپ تفصیلات کی جانچ کر سکتے ہیں۔');
+      // 1. Try Gemini Vision OCR from backend
+      const aiRes = await AiService.scanManualForm(base64Img);
+      if (aiRes.success && aiRes.data) {
+        const data = aiRes.data;
+        setScanResult(data);
 
-      setScanResult(data);
-      setEditFullName(data.fullNameUrdu || data.fullName || 'محمد سلیم خان');
-      setEditFirmName(data.firmNameUrdu || data.firmName || 'الرحمن ٹریڈرز');
-      setEditCnic(formatCnic(data.cnic || '32101-7654321-9'));
-      setEditMobile(formatMobile(data.mobile || '0300-1234567'));
-      setEditAddress(data.addressUrdu || data.address || 'دکان نمبر 12، اردو بازار، لاہور');
+        const nameVal = data.fullNameUrdu || data.fullName || '';
+        const firmVal = data.firmNameUrdu || data.firmName || '';
+        const cnicVal = formatCnic(data.cnic || '');
+        const mobVal = formatMobile(data.mobile || '');
+        const addrVal = data.addressUrdu || data.address || '';
 
-      // Check if voter already exists in database/sheet by CNIC or Mobile
-      const scannedCnic = data.cnic || '';
-      const scannedMobile = data.mobile || '';
+        setEditFullName(nameVal);
+        setEditFirmName(firmVal);
+        setEditCnic(cnicVal);
+        setEditMobile(mobVal);
+        setEditAddress(addrVal);
 
-      if (scannedCnic || scannedMobile) {
-        setIsCheckingDuplicate(true);
-        try {
-          const existing = await ApiService.findExistingVoter(scannedCnic, scannedMobile);
-          if (existing) {
-            setExistingRecord(existing);
+        setInfoMessage('تصویر سے معلومات (اردو و انگریزی) کامیابی سے حاصل کر لی گئی ہیں۔ براہ کرم نیچے تصدیق کریں۔');
+
+        // Check if voter already exists in database/sheet by CNIC or Mobile
+        if (cnicVal || mobVal) {
+          setIsCheckingDuplicate(true);
+          try {
+            const existing = await ApiService.findExistingVoter(cnicVal, mobVal);
+            if (existing) {
+              setExistingRecord(existing);
+            }
+          } catch (e) {
+            console.warn('Failed checking existing voter in scan modal:', e);
+          } finally {
+            setIsCheckingDuplicate(false);
           }
-        } catch (e) {
-          console.warn('Failed checking existing voter in scan modal:', e);
-        } finally {
-          setIsCheckingDuplicate(false);
         }
+        return;
+      }
+
+      // 2. Fallback to offline barcode/QR detector if available
+      const offlineData = await scanDocumentOffline(base64Img);
+      if (offlineData.cnic || offlineData.fullName || offlineData.mobile) {
+        setScanResult(offlineData);
+        setEditFullName(offlineData.fullNameUrdu || offlineData.fullName || '');
+        setEditFirmName(offlineData.firmNameUrdu || offlineData.firmName || '');
+        setEditCnic(formatCnic(offlineData.cnic || ''));
+        setEditMobile(formatMobile(offlineData.mobile || ''));
+        setEditAddress(offlineData.addressUrdu || offlineData.address || '');
+        setInfoMessage('کیو آر کوڈ / بارکوڈ سے ڈیٹا حاصل ہو گیا ہے۔');
+      } else {
+        setErrorMessage(
+          aiRes.error || 'تصویر سے تحریر واضح نہیں ہو سکی۔ براہ کرم تصویر کا فوکس بہتر کریں یا نیچے خانوں میں دستی درج کریں۔'
+        );
       }
     } catch (err: any) {
-      setErrorMessage('Scanning error: ' + err.message);
+      setErrorMessage('سکیننگ کے دوران مسئلہ پیش آیا: ' + (err.message || 'Error'));
     } finally {
       setIsScanning(false);
     }
@@ -245,7 +270,7 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
                 <span className="font-urdu text-emerald-400 text-sm font-normal">دستی فارم سکینر</span>
               </h3>
               <p className="text-xs text-slate-400">
-                بغیر کسی API کے آف لائن فوری سکین کریں یا سابقہ ووٹر ریکارڈ تلاش کریں۔
+                تصویر سے نام، فرم، شناختی کارڈ اور پتہ خودکار سکین کر کے فارم پر لائیں۔
               </p>
             </div>
           </div>
@@ -276,7 +301,7 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
                   className="px-3 py-1 bg-rose-900/60 hover:bg-rose-800 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors shrink-0 disabled:opacity-50 cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
-                  <span>بغیر API دوبارہ کوشش</span>
+                  <span>دوبارہ سکین کریں (Retry Scan)</span>
                 </button>
               )}
             </div>
@@ -327,10 +352,10 @@ export const ScanFormModal: React.FC<ScanFormModalProps> = ({
 
               <div className="space-y-1">
                 <h4 className="text-sm font-semibold text-slate-200">
-                  فارم یا رسید کی تصویر منتخب کریں (بغیر کسی API کے فوری سکین)
+                  فارم، شناختی کارڈ یا رسید کی تصویر منتخب کریں
                 </h4>
                 <p className="text-xs text-slate-400 max-w-md mx-auto">
-                  دستی فارم، شناختی کارڈ یا ووٹر پرچی کی تصویر لیں تاکہ معلومات فوری لوڈ ہو جائیں۔
+                  دستی فارم، شناختی کارڈ یا ووٹر پرچی کی تصویر لیں تاکہ نام، فرم اور شناختی کارڈ خودکار طور پر اردو میں فارم پر درج ہو جائیں۔
                 </p>
               </div>
 

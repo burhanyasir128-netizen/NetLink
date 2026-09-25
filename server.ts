@@ -119,30 +119,32 @@ async function startServer() {
         data = parts[1];
       }
 
-      const prompt = `You are an expert Document Analysis and OCR engine for the Election Commission of Pakistan (specifically for Urdu Bazar Lahore voter registrations).
-Analyze this image of a handwritten or printed manual voter registration form, registration slip, CNIC, or trade association membership voucher.
+      const prompt = `You are a specialized Urdu and English Document Analysis & OCR engine for Pakistani voter registration forms, CNIC cards, vouchers, and Urdu Bazar Lahore documents.
+Carefully examine this image and read the EXACT text written on the document:
 
-Carefully identify and extract the following voter details:
-1. Full Name (Voter Name / بنام ووٹر)
-2. Firm or Shop Name (Business name / نام فرم یا دکان)
-3. CNIC Number (13 digits, format: XXXXX-XXXXXXX-X)
-4. Mobile Phone Number (11 digits, Pakistani format e.g. 03001234567 or 03XX-XXXXXXX)
-5. Complete Address (دکان یا رہائشی پتہ)
+1. Full Name (بنام ووٹر / Voter Name): Read the exact Urdu or English name written on the document.
+2. Firm or Shop Name (نام فرم یا دکان / Business Name): Read the exact business/shop name written on the document.
+3. CNIC Number (شناختی کارڈ نمبر): Extract the 13-digit Pakistani CNIC number (format: XXXXX-XXXXXXX-X).
+4. Mobile Phone Number (موبائل فون نمبر): Extract any 11-digit mobile number starting with 03.
+5. Complete Address (مکمل پتہ / Address): Extract the shop or residential address.
 
-Also, provide accurate Urdu translations/transliterations for English names, firm names, and addresses.
+CRITICAL RULES:
+- Extract ONLY the actual text visible in the image. NEVER invent, guess, or use sample/placeholder names.
+- If text is written in Urdu in the picture, preserve the exact Urdu spelling in fullNameUrdu, firmNameUrdu, and addressUrdu.
+- If a field is not present or cannot be read from the image, return an empty string "" for that field.
 
-Respond ONLY with a valid JSON object in this exact schema without markdown backticks or commentary:
+Return a JSON object with:
 {
-  "fullName": "Name in English or original",
-  "fullNameUrdu": "Name in Urdu Nastaliq (e.g. محمد بلال)",
-  "firmName": "Firm/Shop name in English or original",
-  "firmNameUrdu": "Firm/Shop name in Urdu (e.g. سنگ میل پبلی کیشنز)",
-  "cnic": "XXXXX-XXXXXXX-X",
-  "mobile": "03XXXXXXXXX",
-  "address": "Address in English or original",
-  "addressUrdu": "Address in Urdu (e.g. دکان نمبر 24، سرکلر روڈ، اردو بازار، لاہور)",
+  "fullName": "English transliteration or original English name",
+  "fullNameUrdu": "Exact Urdu name (بنام ووٹر)",
+  "firmName": "English transliteration or original English firm name",
+  "firmNameUrdu": "Exact Urdu firm name (نام فرم / دکان)",
+  "cnic": "XXXXX-XXXXXXX-X or empty string",
+  "mobile": "03XXXXXXXXX or empty string",
+  "address": "English address or transliteration",
+  "addressUrdu": "Exact Urdu address (مکمل پتہ)",
   "confidence": "High" | "Medium" | "Low",
-  "notes": "Any note about legibility or detected text"
+  "notes": "Brief note on what was detected"
 }`;
 
       const response = await generateContentWithFallback({
