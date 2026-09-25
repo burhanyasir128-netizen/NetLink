@@ -594,36 +594,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Lightweight SVG Bar Chart */}
         <div className="h-44 w-full flex items-end gap-2 pt-6 pb-2 border-b border-slate-800 px-2">
-          {uniqueFirms.slice(0, 8).map((firm, idx) => {
-            const count = voters.filter((v) => v.firmName === firm).length;
-            const maxCount = Math.max(...uniqueFirms.map((f) => voters.filter((v) => v.firmName === f).length), 1);
-            const heightPct = Math.max(Math.round((count / maxCount) * 100), 12);
+          {uniqueFirms.length === 0 ? (
+            <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 text-xs gap-1">
+              <TrendingUp className="w-6 h-6 text-slate-600" />
+              <span>ابھی تک کوئی نیا ووٹر رجسٹر نہیں ہوا (No voter records yet)</span>
+            </div>
+          ) : (
+            uniqueFirms.slice(0, 8).map((firm, idx) => {
+              const count = voters.filter((v) => v.firmName === firm).length;
+              const maxCount = Math.max(...uniqueFirms.map((f) => voters.filter((v) => v.firmName === f).length), 1);
+              const heightPct = Math.max(Math.round((count / maxCount) * 100), 12);
 
-            return (
-              <div key={firm} className="flex-1 flex flex-col items-center gap-2 group relative">
-                {/* Tooltip on hover */}
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-8 bg-slate-900 border border-slate-700 text-slate-100 text-[10px] py-1 px-2 rounded pointer-events-none whitespace-nowrap z-20 shadow-lg">
-                  {firm}: <strong>{count} voter(s)</strong>
-                </div>
+              return (
+                <div key={firm} className="flex-1 flex flex-col items-center gap-2 group relative">
+                  {/* Tooltip on hover */}
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-8 bg-slate-900 border border-slate-700 text-slate-100 text-[10px] py-1 px-2 rounded pointer-events-none whitespace-nowrap z-20 shadow-lg">
+                    {firm}: <strong>{count} voter(s)</strong>
+                  </div>
 
-                <div className="w-full max-w-[42px] bg-slate-800 rounded-t-lg overflow-hidden flex items-end justify-center">
-                  <div
-                    style={{ height: `${heightPct}%` }}
-                    className={`w-full transition-all duration-500 rounded-t-md ${
-                      idx % 3 === 0
-                        ? 'bg-gradient-to-t from-emerald-600 to-emerald-400'
-                        : idx % 3 === 1
-                        ? 'bg-gradient-to-t from-teal-600 to-teal-400'
-                        : 'bg-gradient-to-t from-sky-600 to-sky-400'
-                    }`}
-                  />
+                  <div className="w-full max-w-[42px] bg-slate-800 rounded-t-lg overflow-hidden flex items-end justify-center">
+                    <div
+                      style={{ height: `${heightPct}%` }}
+                      className={`w-full transition-all duration-500 rounded-t-md ${
+                        idx % 3 === 0
+                          ? 'bg-gradient-to-t from-emerald-600 to-emerald-400'
+                          : idx % 3 === 1
+                          ? 'bg-gradient-to-t from-teal-600 to-teal-400'
+                          : 'bg-gradient-to-t from-sky-600 to-sky-400'
+                      }`}
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-400 truncate max-w-[70px] text-center">
+                    {firm.split(' ')[0]}
+                  </span>
                 </div>
-                <span className="text-[10px] text-slate-400 truncate max-w-[70px] text-center">
-                  {firm.split(' ')[0]}
-                </span>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
 
