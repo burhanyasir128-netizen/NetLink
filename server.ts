@@ -146,34 +146,36 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
 }`;
 
       const response = await generateContentWithFallback({
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType,
-                  data,
-                },
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType,
+                data,
               },
-              { text: prompt },
-            ],
-          },
-        ],
+            },
+            { text: prompt },
+          ],
+        },
         config: {
           responseMimeType: 'application/json',
           temperature: 0.1,
         },
       });
 
-      const text = response.text?.trim() || '{}';
+      const text = response?.text?.trim() || '{}';
       let parsed = {};
       try {
         parsed = JSON.parse(text);
       } catch (err) {
         // Strip markdown fences if any
         const cleaned = text.replace(/```json\n?|\n?```/g, '').trim();
-        parsed = JSON.parse(cleaned);
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch (e) {
+          console.warn('Failed parsing JSON from Gemini OCR:', text);
+          parsed = {};
+        }
       }
 
       return res.json({ success: true, data: parsed });
