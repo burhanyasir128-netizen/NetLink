@@ -551,6 +551,7 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
       }
 
       const targetUrl = new URL(config.googleWebAppUrl);
+      targetUrl.searchParams.set('secret', 'VoterPortal2026SecureKey');
       // Forward all query parameters
       for (const [key, value] of Object.entries(req.query)) {
         if (typeof value === 'string') {
@@ -589,10 +590,15 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
         return res.status(400).json({ success: false, error: 'Google Apps Script is not enabled in configuration' });
       }
 
+      const payload = {
+        secret: 'VoterPortal2026SecureKey',
+        ...(typeof req.body === 'object' && req.body !== null ? req.body : {}),
+      };
+
       const fetchRes = await fetch(config.googleWebAppUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(req.body),
+        body: JSON.stringify(payload),
         redirect: 'follow',
       });
 

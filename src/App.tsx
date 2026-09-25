@@ -7,7 +7,6 @@ import { PublicRegistration } from './components/PublicRegistration';
 import { VerifyVoterModal } from './components/VerifyVoterModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { PrintTemplates } from './components/PrintTemplates';
-import { SecurityNotice } from './components/SecurityNotice';
 import { Shield, CheckCircle, Phone } from 'lucide-react';
 
 export default function App() {
@@ -56,6 +55,36 @@ export default function App() {
     loadData();
   }, []);
 
+  // Anti-Inspect / Disable Developer Tools & Right Click
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F12') {
+        e.preventDefault();
+        return false;
+      }
+      if (e.ctrlKey && e.shiftKey && ['I', 'i', 'J', 'j', 'C', 'c'].includes(e.key)) {
+        e.preventDefault();
+        return false;
+      }
+      if (e.ctrlKey && ['U', 'u'].includes(e.key)) {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    document.addEventListener('contextmenu', handleContextMenu);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   const handleSaveSettings = async (newSettings: SystemSettings) => {
     setSettings(newSettings);
     await ApiService.updateSettings(newSettings);
@@ -73,22 +102,8 @@ export default function App() {
     setPrintState({ mode: 'none', voter: null, votersList: [] });
   };
 
-  const handleToggleSecurity = () => {
-    const updated = {
-      ...settings,
-      securityProtectionEnabled: !settings.securityProtectionEnabled,
-    };
-    handleSaveSettings(updated);
-  };
-
   return (
     <div className={`min-h-screen flex flex-col ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-900'}`}>
-      {/* Client-Side Protection Listeners & Alert */}
-      <SecurityNotice
-        enabled={settings.securityProtectionEnabled}
-        onDisableTemporary={handleToggleSecurity}
-      />
-
       {/* Main Header */}
       <Header
         activeTab={activeTab}
@@ -96,7 +111,6 @@ export default function App() {
         isDarkMode={isDarkMode}
         setIsDarkMode={setIsDarkMode}
         settings={settings}
-        onToggleSecurity={handleToggleSecurity}
       />
 
       {/* Main Content Area */}

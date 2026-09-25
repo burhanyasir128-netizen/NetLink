@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActiveTab, SystemSettings } from '../types';
-import { ShieldCheck, Moon, Sun, UserCheck, UserPlus, ShieldAlert } from 'lucide-react';
+import { ShieldCheck, Moon, Sun, UserCheck, UserPlus } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: ActiveTab;
@@ -9,7 +9,6 @@ interface HeaderProps {
   setIsDarkMode: (val: boolean) => void;
   settings: SystemSettings;
   onOpenSettings?: () => void;
-  onToggleSecurity?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,7 +17,6 @@ export const Header: React.FC<HeaderProps> = ({
   isDarkMode,
   setIsDarkMode,
   settings,
-  onToggleSecurity,
 }) => {
   return (
     <header className="sticky top-0 z-40 w-full glass-panel border-b border-slate-800/80 transition-colors">
@@ -84,28 +82,8 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </nav>
 
-          {/* Right Controls: Security Toggle & Theme Toggle */}
+          {/* Right Controls: Theme Toggle */}
           <div className="flex items-center gap-2">
-            {/* Client-side protection status */}
-            <button
-              onClick={onToggleSecurity}
-              className={`p-2 rounded-xl border text-xs transition-colors flex items-center gap-1.5 cursor-pointer ${
-                settings.securityProtectionEnabled
-                  ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
-                  : 'border-slate-800 text-slate-500 hover:text-slate-300 bg-slate-900'
-              }`}
-              title={`Client Security Shield: ${settings.securityProtectionEnabled ? 'Active (Right-click & DevTools protected)' : 'Inactive (Developer inspect enabled)'}`}
-            >
-              {settings.securityProtectionEnabled ? (
-                <ShieldCheck className="w-4 h-4" />
-              ) : (
-                <ShieldAlert className="w-4 h-4" />
-              )}
-              <span className="hidden xl:inline text-[11px]">
-                {settings.securityProtectionEnabled ? 'Protected' : 'Inspect Mode'}
-              </span>
-            </button>
-
             {/* Theme Toggle */}
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
