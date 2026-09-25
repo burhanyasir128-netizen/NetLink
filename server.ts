@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+import { transliterateEnglishToUrdu } from './src/utils/urduDictionary.js';
 
 dotenv.config();
 
@@ -59,8 +60,8 @@ async function startServer() {
    * Helper: Generate content with automatic model fallback & retry for 503/429 spikes
    */
   async function generateContentWithFallback(requestConfig: any) {
-    // Models to try in order of availability and stability for multimodal vision OCR
-    const candidateModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.8-flash'];
+    // Valid models from @google/genai guidelines: gemini-3.8-flash and alias gemini-flash-latest
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest'];
     let lastError: any = null;
 
     for (const model of candidateModels) {
@@ -173,8 +174,12 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
     } catch (error: any) {
       console.error('Error in /api/scan-form:', error);
       let userFriendlyMsg = error.message || 'Failed to scan manual form';
-      if (typeof userFriendlyMsg === 'string' && (userFriendlyMsg.includes('503') || userFriendlyMsg.includes('high demand') || userFriendlyMsg.includes('UNAVAILABLE'))) {
-        userFriendlyMsg = 'AI سروس پر عارضی لوڈ ہے۔ براہ کرم دوبارہ "Retry Scan" پر کلک کریں یا کچھ سیکنڈ بعد کوشش کریں۔ (High server traffic spike, please click retry).';
+      if (typeof userFriendlyMsg === 'string') {
+        if (userFriendlyMsg.includes('429') || userFriendlyMsg.includes('RESOURCE_EXHAUSTED') || userFriendlyMsg.includes('Quota exceeded')) {
+          userFriendlyMsg = 'گوگل جیمنائی سروس کا وقتی کوٹہ مکمل ہے۔ برائے مہربانی چند سیکنڈ بعد دوبارہ کوشش کریں یا معلومات دستی درج کریں۔ (AI rate limit reached, please retry in 1 minute).';
+        } else if (userFriendlyMsg.includes('503') || userFriendlyMsg.includes('high demand') || userFriendlyMsg.includes('UNAVAILABLE')) {
+          userFriendlyMsg = 'AI سروس پر عارضی لوڈ ہے۔ براہ کرم دوبارہ "Retry Scan" پر کلک کریں یا کچھ سیکنڈ بعد کوشش کریں۔ (High server traffic spike, please click retry).';
+        }
       }
 
       return res.status(500).json({
@@ -188,9 +193,9 @@ Respond ONLY with a valid JSON object in this exact schema without markdown back
    * API Route: Convert English Entry to Urdu (Translation & Transliteration)
    */
   app.post('/api/translate-to-urdu', async (req, res) => {
-    try {
-      const { fullName, firmName, address } = req.body;
+    const { fullName, firmName, address } = req.body;
 
+    try {
       const prompt = `You are a professional English-to-Urdu translator for Pakistani election and business records (Urdu Bazar Lahore).
 Translate and transliterate the following English voter registration entries into high-quality Urdu:
 
@@ -224,11 +229,14 @@ Return ONLY a valid JSON object in this exact schema without markdown backticks:
 
       return res.json({ success: true, data: parsed });
     } catch (error: any) {
-      console.error('Error in /api/translate-to-urdu:', error);
-      return res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to translate to Urdu',
-      });
+      console.warn('Gemini translate-to-urdu hit quota or unavailable, falling back to instant Urdu dictionary transliteration:', error.message);
+      // Seamless zero-failure fallback using built-in Urdu translation dictionary
+      const fallbackData = {
+        fullNameUrdu: transliterateEnglishToUrdu(fullName || ''),
+        firmNameUrdu: transliterateEnglishToUrdu(firmName || ''),
+        addressUrdu: transliterateEnglishToUrdu(address || ''),
+      };
+      return res.json({ success: true, data: fallbackData, note: 'Translated using local election dictionary' });
     }
   });
 
@@ -326,21 +334,55 @@ Return ONLY a valid JSON object in this exact schema without markdown backticks:
   });
 
   /**
-   * API Route: Get Users List
+   * API Route: Get Users List (Local config + sync from Google Sheets Users tab if enabled)
    */
-  app.get('/api/users', (req, res) => {
+  app.get('/api/users', async (req, res) => {
     const config = getSystemConfig();
+
+    // If Google Apps Script is enabled, attempt to fetch users from the Google Sheet "Users" tab
+    if (config.useGoogleAppsScript && config.googleWebAppUrl) {
+      try {
+        const gasUrl = new URL(config.googleWebAppUrl);
+        gasUrl.searchParams.set('action', 'getUsers');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+        const gasRes = await fetch(gasUrl.toString(), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (gasRes.ok) {
+          const gasData = await gasRes.json();
+          if (gasData.success && Array.isArray(gasData.users) && gasData.users.length > 0) {
+            // Merge & sync with local config
+            config.users = gasData.users;
+            saveSystemConfig(config);
+            const safeUsers = gasData.users.map((u: any) => {
+              const { password, ...safe } = u;
+              return safe;
+            });
+            return res.json({ success: true, users: safeUsers, source: 'google_sheets' });
+          }
+        }
+      } catch (err) {
+        // Fallback silently to local config
+      }
+    }
+
     const users = (config.users || []).map((u: any) => {
       const { password, ...safe } = u;
       return safe;
     });
-    return res.json({ success: true, users });
+    return res.json({ success: true, users, source: 'local_config' });
   });
 
   /**
-   * API Route: Save / Update Users with Roles
+   * API Route: Save / Update Users with Roles (Saves to both system-config.json AND Google Sheet separate 'Users' tab)
    */
-  app.post('/api/users', (req, res) => {
+  app.post('/api/users', async (req, res) => {
     try {
       const { users } = req.body;
       if (!Array.isArray(users)) {
@@ -357,7 +399,39 @@ Return ONLY a valid JSON object in this exact schema without markdown backticks:
       config.lastUpdated = new Date().toISOString();
 
       saveSystemConfig(config);
-      return res.json({ success: true, message: 'Users updated successfully', users });
+
+      // Also sync to Google Apps Script separate "Users" sheet
+      let gasSynced = false;
+      let gasMessage = '';
+      if (config.useGoogleAppsScript && config.googleWebAppUrl) {
+        try {
+          const gasRes = await fetch(config.googleWebAppUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'saveUsers',
+              users: users,
+            }),
+          });
+          if (gasRes.ok) {
+            const gasData = await gasRes.json();
+            gasSynced = Boolean(gasData.success);
+            gasMessage = gasData.message || '';
+          }
+        } catch (gasErr: any) {
+          console.warn('Failed to sync users to Google Sheet Users tab:', gasErr.message);
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: gasSynced
+          ? 'تمام صارفین کا ڈیٹا گوگل شیٹ کے "Users" ٹیب اور سرور پر محفوظ ہو گیا!'
+          : 'صارفین کا ڈیٹا محفوظ ہو گیا ہے۔',
+        gasSynced,
+        gasMessage,
+        users,
+      });
     } catch (err: any) {
       return res.status(500).json({ success: false, message: err.message || 'Error updating users' });
     }

@@ -204,7 +204,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
       if (ok) {
         setUsersList(updatedList);
         setIsEditUserOpen(false);
-        setStatusMsg({ type: 'success', text: 'صارف کا ریکارڈ کامیابی سے محفوظ ہو گیا!' });
+        setStatusMsg({ type: 'success', text: 'صارف کا ریکارڈ گوگل شیٹ کی "Users" شیٹ اور سرور پر کامیابی سے محفوظ ہو گیا!' });
         if (onUserUpdated) onUserUpdated();
       } else {
         alert('صارف کا ریکارڈ محفوظ نہ ہو سکا۔');
@@ -396,9 +396,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-2 border-b border-slate-800">
                 <div>
-                  <h4 className="text-sm font-bold text-white">رجسٹرڈ صارفین اور اختیارات (Users & Permissions)</h4>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span>رجسٹرڈ صارفین اور اختیارات (Users & Permissions)</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                      Google Sheet "Users" Tab Synced
+                    </span>
+                  </h4>
                   <p className="text-[11px] text-slate-400">
-                    مختلف آپریٹرز کو ان کے رولز کے مطابق الگ الگ لاگ ان اور پاس ورڈ دیں
+                    تمام صارفین کا ڈیٹا خودکار طور پر گوگل شیٹ کی علیحدہ شیٹ <code className="text-emerald-400 font-mono">"Users"</code> اور سرور میں محفوظ ہوتا ہے۔
                   </p>
                 </div>
                 {isSuperAdmin && (

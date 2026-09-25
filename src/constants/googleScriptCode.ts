@@ -26,6 +26,7 @@ export const GOOGLE_APPS_SCRIPT_SOURCE = `/**
 // Configuration Constants
 var SHEET_NAME_VOTERS = "Voters";
 var SHEET_NAME_SETTINGS = "Settings";
+var SHEET_NAME_USERS = "Users";
 var DRIVE_FOLDER_NAME = "Voter_Photos_Election_Commission";
 var DEFAULT_ADMIN_PASSWORD = "admin";
 
@@ -38,6 +39,8 @@ function doGet(e) {
   try {
     if (action === "getAll") {
       return jsonResponse(getAllData());
+    } else if (action === "getUsers") {
+      return jsonResponse(getUsersList());
     } else if (action === "checkDuplicate") {
       var cnic = e.parameter.cnic || "";
       var mobile = e.parameter.mobile || "";
@@ -84,6 +87,8 @@ function doPost(e) {
       return jsonResponse(deleteVoter(data));
     } else if (action === "updateSettings") {
       return jsonResponse(updateSettings(data));
+    } else if (action === "saveUsers") {
+      return jsonResponse(saveUsersList(data.users || []));
     } else if (action === "verifyPassword") {
       return jsonResponse(verifyPassword(data.password));
     } else {
@@ -194,7 +199,36 @@ function getSpreadsheet() {
     settingsSheet.setFrozenRows(1);
   }
 
-  return { ss: ss, voterSheet: voterSheet, settingsSheet: settingsSheet };
+  // Ensure Users sheet exists (for User Management & Roles)
+  var usersSheet = ss.getSheetByName(SHEET_NAME_USERS);
+  if (!usersSheet) {
+    usersSheet = ss.insertSheet(SHEET_NAME_USERS);
+    usersSheet.appendRow([
+      "User ID",
+      "Username",
+      "Full Name",
+      "Role",
+      "Password",
+      "Phone",
+      "Status",
+      "Created At"
+    ]);
+    usersSheet.setFrozenRows(1);
+    usersSheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#0f172a").setFontColor("#38bdf8");
+    // Seed default admin user
+    usersSheet.appendRow([
+      "USR-1",
+      "admin",
+      "چیف ایڈمنسٹریٹر (Chief Admin)",
+      "super_admin",
+      DEFAULT_ADMIN_PASSWORD,
+      "0300-8451234",
+      "active",
+      new Date().toISOString()
+    ]);
+  }
+
+  return { ss: ss, voterSheet: voterSheet, settingsSheet: settingsSheet, usersSheet: usersSheet };
 }
 
 /**
@@ -474,6 +508,78 @@ function updateSettings(data) {
   }
 
   return { success: true, message: "Settings updated successfully" };
+}
+
+/**
+ * Get Users List from Users Sheet
+ */
+function getUsersList() {
+  var sheets = getSpreadsheet();
+  var uSheet = sheets.usersSheet;
+  var lastRow = uSheet.getLastRow();
+  var users = [];
+
+  if (lastRow > 1) {
+    var rows = uSheet.getRange(2, 1, lastRow - 1, 8).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (r[1]) { // username exists
+        users.push({
+          id: String(r[0] || "USR-" + (i + 1)),
+          username: String(r[1]).toLowerCase().trim(),
+          fullName: String(r[2] || ""),
+          role: String(r[3] || "data_entry"),
+          password: String(r[4] || ""),
+          phone: String(r[5] || ""),
+          status: String(r[6] || "active"),
+          createdAt: r[7] ? String(r[7]) : new Date().toISOString()
+        });
+      }
+    }
+  }
+
+  return { success: true, users: users };
+}
+
+/**
+ * Save / Overwrite Users List in Users Sheet
+ */
+function saveUsersList(users) {
+  var sheets = getSpreadsheet();
+  var uSheet = sheets.usersSheet;
+
+  // Clear existing data except header
+  uSheet.clear();
+  uSheet.appendRow([
+    "User ID",
+    "Username",
+    "Full Name",
+    "Role",
+    "Password",
+    "Phone",
+    "Status",
+    "Created At"
+  ]);
+  uSheet.setFrozenRows(1);
+  uSheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#0f172a").setFontColor("#38bdf8");
+
+  if (Array.isArray(users)) {
+    for (var i = 0; i < users.length; i++) {
+      var u = users[i];
+      uSheet.appendRow([
+        String(u.id || "USR-" + (i + 1)),
+        String(u.username || "").toLowerCase().trim(),
+        String(u.fullName || ""),
+        String(u.role || "data_entry"),
+        String(u.password || ""),
+        String(u.phone || ""),
+        String(u.status || "active"),
+        String(u.createdAt || new Date().toISOString())
+      ]);
+    }
+  }
+
+  return { success: true, message: "Users list synced to Google Sheet successfully", count: users.length };
 }
 
 /**
