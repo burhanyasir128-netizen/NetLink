@@ -11,8 +11,8 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   phone: '042-37234567 / 0300-8451234',
   logoUrl: 'https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=200&q=80',
   adminPasswordHash: 'admin', // default backend password
-  googleWebAppUrl: '',
-  useGoogleAppsScript: false,
+  googleWebAppUrl: 'https://script.google.com/macros/s/AKfycbxeLGd8p4aXQEQgrxoD2YFD24Fpe1qo8J-UDivpatTgqg7vvVKUmQRkNEPgywax-n6POA/exec',
+  useGoogleAppsScript: true,
   securityProtectionEnabled: true,
   commissionerNameUr: 'ملک محمد فاروق',
   commissionerTitleUr: 'چیف الیکشن کمشنر',

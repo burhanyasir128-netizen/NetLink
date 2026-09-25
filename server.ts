@@ -46,9 +46,9 @@ function getSystemConfig() {
     console.error('Error reading system-config.json:', err);
   }
   return {
-    googleWebAppUrl: '',
-    useGoogleAppsScript: false,
-    lastUpdated: '',
+    googleWebAppUrl: 'https://script.google.com/macros/s/AKfycbxeLGd8p4aXQEQgrxoD2YFD24Fpe1qo8J-UDivpatTgqg7vvVKUmQRkNEPgywax-n6POA/exec',
+    useGoogleAppsScript: true,
+    lastUpdated: new Date().toISOString(),
   };
 }
 

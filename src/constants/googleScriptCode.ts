@@ -20,7 +20,8 @@ export const GOOGLE_APPS_SCRIPT_SOURCE = `/**
  * 7. Set "Execute as": "Me (your-email@gmail.com)".
  * 8. Set "Who has access": "Anyone" (CRITICAL for public voter registration!).
  * 9. Click "Deploy" and authorize permissions.
- * 10. Copy the Web App URL (ends with /exec) and paste it into the Admin Settings!
+ * 10. Active Deployed Web App URL:
+ *     https://script.google.com/macros/s/AKfycbxeLGd8p4aXQEQgrxoD2YFD24Fpe1qo8J-UDivpatTgqg7vvVKUmQRkNEPgywax-n6POA/exec
  */
 
 // Configuration Constants

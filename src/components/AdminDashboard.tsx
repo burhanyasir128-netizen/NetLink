@@ -316,11 +316,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setSettingsSaveMsg(null);
     try {
       const isSuper = currentUser?.role === 'super_admin';
+      const cleanUrl = (settingsForm.googleWebAppUrl || '').trim();
+
+      if (isSuper && settingsForm.useGoogleAppsScript && cleanUrl.includes('docs.google.com/spreadsheets')) {
+        setSettingsSaveMsg('⚠️ غلط لنک: آپ گوگل شیٹ کا براؤزر لنک لگا رہے ہیں۔ شیٹ کے اندر Extensions > Apps Script > Deploy > Web App سے حاصل کردہ لنک لگائیں جس کے آخر میں /exec ہو۔');
+        return;
+      }
 
       // Save configuration securely into separate config/system-config.json file
       if (isSuper) {
         await ApiService.saveSecureConfig({
-          googleWebAppUrl: settingsForm.googleWebAppUrl,
+          googleWebAppUrl: cleanUrl,
           useGoogleAppsScript: settingsForm.useGoogleAppsScript,
           adminPassword: settingsForm.adminPasswordHash,
         });
@@ -335,7 +341,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       await onSaveSettings({
         ...settingsForm,
-        googleWebAppUrl: isSuper ? settingsForm.googleWebAppUrl : settings.googleWebAppUrl,
+        googleWebAppUrl: isSuper ? cleanUrl : settings.googleWebAppUrl,
         useGoogleAppsScript: isSuper ? settingsForm.useGoogleAppsScript : settings.useGoogleAppsScript,
       });
 
