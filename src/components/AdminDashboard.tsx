@@ -299,14 +299,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     e.preventDefault();
     setSettingsSaveMsg(null);
     try {
+      const isSuper = currentUser?.role === 'super_admin';
+
       // Save configuration securely into separate config/system-config.json file
-      await ApiService.saveSecureConfig({
-        googleWebAppUrl: settingsForm.googleWebAppUrl,
-        useGoogleAppsScript: settingsForm.useGoogleAppsScript,
-        adminPassword: settingsForm.adminPasswordHash,
+      if (isSuper) {
+        await ApiService.saveSecureConfig({
+          googleWebAppUrl: settingsForm.googleWebAppUrl,
+          useGoogleAppsScript: settingsForm.useGoogleAppsScript,
+          adminPassword: settingsForm.adminPasswordHash,
+        });
+      } else {
+        // Non-super admins only update local presentation settings, without changing Google Sheet link
+        await ApiService.saveSecureConfig({
+          googleWebAppUrl: settings.googleWebAppUrl,
+          useGoogleAppsScript: settings.useGoogleAppsScript,
+          adminPassword: settingsForm.adminPasswordHash,
+        });
+      }
+
+      await onSaveSettings({
+        ...settingsForm,
+        googleWebAppUrl: isSuper ? settingsForm.googleWebAppUrl : settings.googleWebAppUrl,
+        useGoogleAppsScript: isSuper ? settingsForm.useGoogleAppsScript : settings.useGoogleAppsScript,
       });
-      await onSaveSettings(settingsForm);
-      setSettingsSaveMsg('پاس ورڈ اور سیٹنگز گوگل شیٹ اور سرور پر کامیابی سے محفوظ ہو گئے ہیں! (Saved to Google Sheet & Server)');
+
+      setSettingsSaveMsg('سیٹنگز کامیابی سے محفوظ ہو گئی ہیں! (Settings Saved)');
       setTimeout(() => {
         setIsSettingsOpen(false);
         setSettingsSaveMsg(null);
@@ -521,11 +538,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button
               type="button"
               onClick={async () => {
-                const secConfig = await ApiService.getSecureConfig();
+                const isSuper = currentUser?.role === 'super_admin';
+                const secConfig = isSuper ? await ApiService.getSecureConfig() : { googleWebAppUrl: '', useGoogleAppsScript: false };
                 setSettingsForm({
                   ...settings,
-                  googleWebAppUrl: secConfig.googleWebAppUrl,
-                  useGoogleAppsScript: secConfig.useGoogleAppsScript,
+                  googleWebAppUrl: isSuper ? secConfig.googleWebAppUrl : '',
+                  useGoogleAppsScript: isSuper ? secConfig.useGoogleAppsScript : false,
                 });
                 setGasTestResult(null);
                 setIsSettingsOpen(true);
@@ -1159,52 +1177,68 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               </div>
 
-              {/* Separate Secure Configuration: Google Apps Script Backend URL */}
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-700/80 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className="text-slate-200 font-semibold block text-xs">
-                      Google Apps Script Web App Link (گوگل لنک)
+              {/* Separate Secure Configuration: Google Apps Script Backend URL (STRICTLY SUPER ADMIN ONLY) */}
+              {currentUser?.role === 'super_admin' ? (
+                <div className="p-4 rounded-xl bg-slate-950/80 border border-emerald-500/40 space-y-3 relative overflow-hidden shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-amber-400" />
+                        <label className="text-amber-300 font-semibold block text-xs">
+                          Google Apps Script Web App Link (صرف سپر ایڈمن کے لیے)
+                        </label>
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          Super Admin Only
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        یہ لنک انتہائی خفیہ ہے اور سپر ایڈمن کے علاوہ کسی بھی دوسرے صارف، ایڈمن یا ڈیٹا اینٹری آپریٹر کو نظر نہیں آئے گا۔
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={settingsForm.useGoogleAppsScript}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, useGoogleAppsScript: e.target.checked })}
+                        className="rounded text-emerald-600 focus:ring-emerald-500 bg-slate-900 border-slate-700"
+                      />
+                      <span className="text-emerald-400 font-semibold text-xs">فعال کریں (Enable Sync)</span>
                     </label>
-                    <p className="text-[11px] text-slate-400">
-                      یہ لنک محفوظ طور پر سرور کی الگ فائل <code className="text-emerald-400 font-mono">config/system-config.json</code> میں محفوظ ہوتا ہے۔
-                    </p>
                   </div>
-                  <label className="flex items-center gap-2 cursor-pointer shrink-0">
+
+                  <div className="flex gap-2">
                     <input
-                      type="checkbox"
-                      checked={settingsForm.useGoogleAppsScript}
-                      onChange={(e) => setSettingsForm({ ...settingsForm, useGoogleAppsScript: e.target.checked })}
-                      className="rounded text-emerald-600 focus:ring-emerald-500 bg-slate-900 border-slate-700"
+                      type="url"
+                      value={settingsForm.googleWebAppUrl}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, googleWebAppUrl: e.target.value })}
+                      placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                      className="flex-1 p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 font-mono text-xs focus:outline-none focus:border-emerald-500"
                     />
-                    <span className="text-emerald-400 font-semibold text-xs">فعال کریں (Enable Sync)</span>
-                  </label>
-                </div>
-
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={settingsForm.googleWebAppUrl}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, googleWebAppUrl: e.target.value })}
-                    placeholder="https://script.google.com/macros/s/AKfycb.../exec"
-                    className="flex-1 p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 font-mono text-xs focus:outline-none focus:border-emerald-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleTestGas}
-                    disabled={testingGas || !settingsForm.googleWebAppUrl}
-                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium shrink-0 disabled:opacity-50 cursor-pointer"
-                  >
-                    {testingGas ? 'Testing...' : 'Test Link'}
-                  </button>
-                </div>
-
-                {gasTestResult && (
-                  <div className={`p-2.5 rounded-lg text-xs ${gasTestResult.success ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/50' : 'bg-rose-950/80 text-rose-300 border border-rose-500/50'}`}>
-                    {gasTestResult.message}
+                    <button
+                      type="button"
+                      onClick={handleTestGas}
+                      disabled={testingGas || !settingsForm.googleWebAppUrl}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium shrink-0 disabled:opacity-50 cursor-pointer"
+                    >
+                      {testingGas ? 'Testing...' : 'Test Link'}
+                    </button>
                   </div>
-                )}
-              </div>
+
+                  {gasTestResult && (
+                    <div className={`p-2.5 rounded-lg text-xs ${gasTestResult.success ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/50' : 'bg-rose-950/80 text-rose-300 border border-rose-500/50'}`}>
+                      {gasTestResult.message}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-slate-950/50 border border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-slate-500" />
+                    <span>گوگل شیٹ ڈیٹا بیس کنکشن صرف <strong>Super Admin</strong> کنٹرول کر سکتا ہے۔</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono bg-slate-900 px-2 py-1 rounded">Hidden for non-super admins</span>
+                </div>
+              )}
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-800">
                 <button

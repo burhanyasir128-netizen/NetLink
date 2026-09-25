@@ -31,6 +31,23 @@ var DRIVE_FOLDER_NAME = "Voter_Photos_Election_Commission";
 var DEFAULT_ADMIN_PASSWORD = "admin";
 
 /**
+ * Automatically create and format all sheets (Voters, Users, Settings)
+ * Runs on spreadsheet open or when Run setupSheets() is clicked
+ */
+function onOpen() {
+  setupSheets();
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu("الیکشن کمیشن سسٹم")
+    .addItem("1. تمام شیٹس تیار کریں (Setup All Sheets)", "setupSheets")
+    .addItem("2. یوزرز اور رولز ٹیب چیک کریں (Check Users Sheet)", "setupSheets")
+    .addToUi();
+}
+
+function setupSheets() {
+  getSpreadsheet();
+}
+
+/**
  * Handle HTTP GET Requests
  */
 function doGet(e) {
