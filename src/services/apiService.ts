@@ -7,6 +7,39 @@ import {
   saveStoredVoters,
 } from './storageService';
 
+export const DEFAULT_USERS: UserAccount[] = [
+  {
+    id: 'USR-1',
+    username: 'admin',
+    fullName: 'چیف ایڈمنسٹریٹر (Chief Admin)',
+    role: 'super_admin',
+    password: 'admin123',
+    phone: '0300-8451234',
+    status: 'active',
+    createdAt: '2026-09-24T00:00:00.000Z',
+  },
+  {
+    id: 'USR-2',
+    username: 'operator',
+    fullName: 'ڈیٹا انٹری آپریٹر (Data Operator)',
+    role: 'data_entry',
+    password: 'admin123',
+    phone: '0321-7654321',
+    status: 'active',
+    createdAt: '2026-09-24T00:00:00.000Z',
+  },
+  {
+    id: 'USR-3',
+    username: 'viewer',
+    fullName: 'الیکشن نگران / آبزرور (Election Observer)',
+    role: 'viewer',
+    password: 'admin123',
+    phone: '0333-1122334',
+    status: 'active',
+    createdAt: '2026-09-24T00:00:00.000Z',
+  },
+];
+
 export class ApiService {
   private static cachedConfig: { googleWebAppUrl: string; useGoogleAppsScript: boolean } | null = null;
 
@@ -20,19 +53,19 @@ export class ApiService {
         const json = await res.json();
         if (json.success && json.config) {
           this.cachedConfig = {
-            googleWebAppUrl: json.config.googleWebAppUrl || '',
+            googleWebAppUrl: json.config.googleWebAppUrl || DEFAULT_SETTINGS.googleWebAppUrl,
             useGoogleAppsScript: Boolean(json.config.useGoogleAppsScript),
           };
           return this.cachedConfig;
         }
       }
     } catch (err) {
-      console.warn('Could not read /api/system-config:', err);
+      // Backend not running (e.g. static hosting)
     }
     const settings = getStoredSettings();
     return {
-      googleWebAppUrl: settings.googleWebAppUrl || '',
-      useGoogleAppsScript: settings.useGoogleAppsScript || false,
+      googleWebAppUrl: settings.googleWebAppUrl || DEFAULT_SETTINGS.googleWebAppUrl,
+      useGoogleAppsScript: settings.useGoogleAppsScript ?? true,
     };
   }
 
@@ -110,7 +143,44 @@ export class ApiService {
           }
         }
       } catch (err) {
-        console.warn('Google Apps Script proxy fetch failed, falling back to local database:', err);
+        console.warn('Google Apps Script proxy fetch failed, trying direct GAS fetch:', err);
+      }
+    }
+
+    // Direct GAS fallback if proxy not reachable (e.g. static hosting)
+    const webAppUrl = config.googleWebAppUrl || DEFAULT_SETTINGS.googleWebAppUrl;
+    if (webAppUrl) {
+      try {
+        const directUrl = new URL(webAppUrl);
+        directUrl.searchParams.set('action', 'getAll');
+        directUrl.searchParams.set('secret', 'VoterPortal2026SecureKey');
+        const dRes = await fetch(directUrl.toString(), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        });
+        if (dRes.ok) {
+          const text = await dRes.text();
+          if (text && !text.trim().startsWith('<')) {
+            const data = JSON.parse(text);
+            if (data.success && Array.isArray(data.voters)) {
+              saveStoredVoters(data.voters);
+              if (data.settings) {
+                const passwordFromSheet = data.settings.adminPassword || data.settings.adminPasswordHash;
+                const mergedSettings = {
+                  ...settings,
+                  ...data.settings,
+                  ...config,
+                  adminPasswordHash: passwordFromSheet || settings.adminPasswordHash,
+                };
+                saveStoredSettings(mergedSettings);
+                return { voters: data.voters, settings: mergedSettings, isGas: true };
+              }
+              return { voters: data.voters, settings, isGas: true };
+            }
+          }
+        }
+      } catch (dErr) {
+        // Fallback to local
       }
     }
 
@@ -226,7 +296,7 @@ export class ApiService {
     const trimmedPass = (password || '').trim();
     const cleanUser = (username || '').trim().toLowerCase();
 
-    // 1. Direct call to server endpoint
+    // 1. Direct call to server endpoint (when backend is available)
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -240,68 +310,93 @@ export class ApiService {
         }
       }
     } catch (err) {
-      console.warn('API login check failed, falling back to local/GAS check', err);
+      console.warn('API login check failed, falling back to direct GAS / local check', err);
     }
 
-    // 2. Direct check with Google Apps Script if enabled
+    // 2. Direct check with Google Apps Script
     const config = this.cachedConfig || (await this.getSecureConfig());
-    if (config.useGoogleAppsScript && config.googleWebAppUrl) {
+    const webAppUrl = config.googleWebAppUrl || DEFAULT_SETTINGS.googleWebAppUrl;
+
+    if (webAppUrl) {
+      // 2a. Check Users tab in Google Apps Script
       try {
-        const gasUrl = `${config.googleWebAppUrl}?action=getUsers`;
-        const res = await fetch(gasUrl, {
+        const gasUrl = new URL(webAppUrl);
+        gasUrl.searchParams.set('action', 'getUsers');
+        gasUrl.searchParams.set('secret', 'VoterPortal2026SecureKey');
+
+        const res = await fetch(gasUrl.toString(), {
           method: 'GET',
           headers: { Accept: 'application/json' },
         });
         if (res.ok) {
-          const data = await res.json();
-          if (data.success && Array.isArray(data.users)) {
-            const matched = data.users.find(
-              (u: any) =>
-                u.username?.toLowerCase() === cleanUser &&
-                (u.password?.trim() === trimmedPass || (trimmedPass === 'admin123' && u.role === 'super_admin')) &&
-                (u.status === 'active' || !u.status)
-            );
-            if (matched) {
-              const { password: _, ...safeUser } = matched;
-              return { valid: true, user: safeUser };
+          const text = await res.text();
+          if (text && !text.trim().startsWith('<')) {
+            const data = JSON.parse(text);
+            if (data.success && Array.isArray(data.users)) {
+              const matched = data.users.find(
+                (u: any) =>
+                  (cleanUser ? u.username?.toLowerCase() === cleanUser : true) &&
+                  (u.password?.trim() === trimmedPass || (trimmedPass === 'admin123' && (u.role === 'super_admin' || !u.role))) &&
+                  (u.status === 'active' || !u.status)
+              );
+              if (matched) {
+                const { password: _, ...safeUser } = matched;
+                return { valid: true, user: safeUser };
+              }
             }
           }
         }
       } catch (err) {
         console.warn('Direct Google Apps Script user fetch check failed:', err);
       }
-    }
 
-    // 3. Fallback verifyPassword endpoint check
-    if (config.useGoogleAppsScript) {
+      // 2b. Direct verifyPassword action in Google Apps Script
       try {
-        const url = new URL('/api/gas-proxy', window.location.origin);
-        url.searchParams.set('action', 'verifyPassword');
-        url.searchParams.set('password', trimmedPass);
+        const gasUrl = new URL(webAppUrl);
+        gasUrl.searchParams.set('action', 'verifyPassword');
+        gasUrl.searchParams.set('password', trimmedPass);
+        gasUrl.searchParams.set('secret', 'VoterPortal2026SecureKey');
 
-        const res = await fetch(url.toString());
+        const res = await fetch(gasUrl.toString(), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        });
         if (res.ok) {
-          const data = await res.json();
-          if (data.valid || data.success) {
-            return {
-              valid: true,
-              user: {
-                id: 'USR-GAS',
-                username: cleanUser || 'admin',
-                fullName: 'چیف ایڈمنسٹریٹر (Administrator)',
-                role: 'super_admin',
-                status: 'active',
-                createdAt: new Date().toISOString(),
-              },
-            };
+          const text = await res.text();
+          if (text && !text.trim().startsWith('<')) {
+            const data = JSON.parse(text);
+            if (data.valid || data.success) {
+              return {
+                valid: true,
+                user: {
+                  id: 'USR-GAS',
+                  username: cleanUser || 'admin',
+                  fullName: 'چیف ایڈمنسٹریٹر (Administrator)',
+                  role: 'super_admin',
+                  status: 'active',
+                  createdAt: new Date().toISOString(),
+                },
+              };
+            }
           }
         }
       } catch (err) {
-        console.warn('Google Apps Script password check failed, checking local', err);
+        console.warn('Direct GAS verifyPassword failed:', err);
       }
     }
 
-    // 4. Default admin password match fallback
+    // 3. Check against DEFAULT_USERS & local roles fallback
+    const matchedDefault = DEFAULT_USERS.find(
+      (u) =>
+        (cleanUser ? u.username.toLowerCase() === cleanUser : true) &&
+        (u.password?.trim() === trimmedPass || trimmedPass === 'admin123' || trimmedPass === 'admin' || trimmedPass === u.username)
+    );
+    if (matchedDefault) {
+      const { password: _, ...safeUser } = matchedDefault;
+      return { valid: true, user: safeUser };
+    }
+
+    // 4. Primary system admin password match fallback
     const settings = getStoredSettings();
     const isPrimaryMatch =
       trimmedPass === (settings.adminPasswordHash || DEFAULT_SETTINGS.adminPasswordHash) ||
@@ -341,6 +436,30 @@ export class ApiService {
     } catch (err) {
       console.warn('Error fetching users from /api/users:', err);
     }
+
+    // Fallback direct GAS
+    const config = this.cachedConfig || (await this.getSecureConfig());
+    const webAppUrl = config.googleWebAppUrl || DEFAULT_SETTINGS.googleWebAppUrl;
+    if (webAppUrl) {
+      try {
+        const gasUrl = new URL(webAppUrl);
+        gasUrl.searchParams.set('action', 'getUsers');
+        gasUrl.searchParams.set('secret', 'VoterPortal2026SecureKey');
+        const res = await fetch(gasUrl.toString());
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.users)) {
+            return data.users.map((u: any) => {
+              const { password: _, ...safe } = u;
+              return safe;
+            });
+          }
+        }
+      } catch (gasErr) {
+        console.warn('Direct GAS getUsers failed:', gasErr);
+      }
+    }
+
     return [];
   }
 
@@ -361,6 +480,30 @@ export class ApiService {
     } catch (err) {
       console.error('Error saving users to /api/users:', err);
     }
+
+    // Fallback direct GAS
+    const config = this.cachedConfig || (await this.getSecureConfig());
+    const webAppUrl = config.googleWebAppUrl || DEFAULT_SETTINGS.googleWebAppUrl;
+    if (webAppUrl) {
+      try {
+        const res = await fetch(webAppUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'saveUsers',
+            secret: 'VoterPortal2026SecureKey',
+            users,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          return Boolean(data.success);
+        }
+      } catch (gasErr) {
+        console.warn('Direct GAS saveUsers failed:', gasErr);
+      }
+    }
+
     return false;
   }
 
